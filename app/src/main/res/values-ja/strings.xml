@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_today_desc">見たものをすぐ撮って、写真が帰ってきたら知らせます。</string>
+    <string name="widget_words_desc">写真ではなく、あなたが残したことばをひとつ。</string>
+    <string name="widget_today_name">今日</string>
+    <string name="widget_words_name">その日のことば</string>
+</resources>
