@@ -267,6 +267,12 @@ object AppStore {
         }
     }
 
+    /** Pull-to-refresh: wait for a sync already running, then fetch again (otherwise the pull did nothing). */
+    suspend fun pullRefresh() {
+        while (isSyncing) kotlinx.coroutines.delay(150)
+        refresh()
+    }
+
     /** Posts already visible in the app should not be announced again by the background check. */
     private fun markFeedSeen(list: List<FriendPost>) {
         val prefs = ctx.getSharedPreferences("seeli.prefs", Context.MODE_PRIVATE)
@@ -392,6 +398,13 @@ object AppStore {
         NotificationService.cancel(ctx, id)
         moments = moments.filterNot { it.id == id }
         save()
+    }
+
+    /** The owner answers a friend's perspective on their photo. */
+    suspend fun replyToComment(momentID: String, commentID: String, text: String): CommentReply? {
+        val clean = text.trim()
+        if (clean.isEmpty()) return null
+        return attempt { api.request<CommentReply>("PUT", "moments/$momentID/comments/$commentID/reply", mapOf("text" to clean)) }
     }
 
     suspend fun comments(id: String): List<Comment> = attempt { api.request<List<Comment>>("GET", "moments/$id/comments") } ?: emptyList()

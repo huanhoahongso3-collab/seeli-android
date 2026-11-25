@@ -92,7 +92,7 @@ fun ConnectScreen() {
     SeeliScreen("LET'S CONNECT", t("connect.subtitle")) {
         PullToRefreshBox(refreshing, onRefresh = {
             refreshing = true
-            scope.launch { AppStore.refresh(); refreshing = false }
+            scope.launch { AppStore.pullRefresh(); refreshing = false }
         }, Modifier.weight(1f)) {
             LazyColumn(Modifier.fillMaxSize().padding(horizontal = 24.dp), verticalArrangement = Arrangement.spacedBy(0.dp)) {
                 item {
@@ -152,6 +152,16 @@ private fun FriendPostCard(post: FriendPost, onComment: () -> Unit, onProfile: (
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(t("connect.sent"), style = ts(11, color = Seeli.Muted))
                         Text(mine, style = ts(14, color = Seeli.Ink))
+                    }
+                }
+                post.myCommentReply?.let { answer ->
+                    Row(Modifier.padding(start = 30.dp).fillMaxWidth().seeliCard(Seeli.Card, 14.dp, false).padding(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Avatar(post.author.initial, 22.dp)
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(tf("connect.reply.from", post.author.name), style = ts(11, color = Seeli.Muted))
+                            Text(answer, style = ts(14, color = Seeli.Ink))
+                        }
                     }
                 }
             } else {

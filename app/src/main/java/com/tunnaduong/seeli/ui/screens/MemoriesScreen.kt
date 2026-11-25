@@ -1,6 +1,12 @@
 package com.tunnaduong.seeli.ui.screens
 
 import android.graphics.BitmapFactory
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.material.icons.outlined.ArrowUpward
+import androidx.compose.material.icons.automirrored.outlined.Reply
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
@@ -216,13 +222,28 @@ private fun MemoryCard(moment: Moment, onOpen: () -> Unit, onComments: () -> Uni
 
 @Composable
 private fun CommentsSheet(moment: Moment) {
+    val scope = rememberCoroutineScope()
     var comments by remember { mutableStateOf(listOf<Comment>()) }
     var loading by remember { mutableStateOf(true) }
+    var replyingTo by remember { mutableStateOf<String?>(null) }
+    var draft by remember { mutableStateOf("") }
+    var sending by remember { mutableStateOf(false) }
     LaunchedEffect(moment.id) {
         if (moment.isPending != true) comments = AppStore.comments(moment.id)
         loading = false
     }
-    Column(Modifier.fillMaxWidth().heightIn(min = 300.dp).navigationBarsPadding().padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    fun send(c: Comment) {
+        sending = true
+        scope.launch {
+            AppStore.replyToComment(moment.id, c.id, draft)?.let { r ->
+                comments = comments.map { if (it.id == c.id) it.copy(reply = r.reply, repliedAt = r.repliedAt) else it }
+                replyingTo = null
+                draft = ""
+            }
+            sending = false
+        }
+    }
+    Column(Modifier.fillMaxWidth().heightIn(min = 300.dp).navigationBarsPadding().imePadding().padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text(t("comments.title"), style = ts(18, FontWeight.SemiBold, Seeli.Ink))
         Text(t("connect.privacy"), style = ts(11, color = Seeli.Muted))
         when {
@@ -231,11 +252,47 @@ private fun CommentsSheet(moment: Moment) {
                 modifier = Modifier.fillMaxWidth().padding(vertical = 40.dp))
             else -> Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 comments.forEach { c ->
-                    Row(Modifier.fillMaxWidth().seeliCard(radius = 14.dp).padding(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Avatar(c.author.initial, 32.dp)
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(c.author.name, style = ts(13, FontWeight.SemiBold, Seeli.Ink))
-                            Text(c.text, style = ts(14, color = Seeli.Ink))
+                    Column(Modifier.fillMaxWidth().seeliCard(radius = 14.dp).padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Avatar(c.author.initial, 32.dp)
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(c.author.name, style = ts(13, FontWeight.SemiBold, Seeli.Ink))
+                                Text(c.text, style = ts(14, color = Seeli.Ink))
+                            }
+                        }
+                        val indent = Modifier.padding(start = 42.dp)
+                        val answer = c.reply
+                        when {
+                            replyingTo == c.id -> {
+                                val focus = remember { FocusRequester() }
+                                LaunchedEffect(Unit) { focus.requestFocus() }
+                                val canSend = !sending && draft.isNotBlank()
+                                Row(indent.fillMaxWidth(), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Box(Modifier.weight(1f).seeliCard(Seeli.Card, 12.dp, false).padding(horizontal = 12.dp, vertical = 10.dp)) {
+                                        SeeliTextField(draft, { draft = it }, t("comments.reply.placeholder"),
+                                            Modifier.fillMaxWidth().focusRequester(focus), singleLine = false, fontSize = 14)
+                                    }
+                                    Box(Modifier.size(38.dp).clip(CircleShape).background(Seeli.Green.copy(alpha = if (canSend) 1f else 0.4f))
+                                        .tap { if (canSend) send(c) }, contentAlignment = Alignment.Center) {
+                                        if (sending) CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
+                                        else Icon(Icons.Outlined.ArrowUpward, t("comments.reply.send"), tint = Color.White, modifier = Modifier.size(18.dp))
+                                    }
+                                }
+                            }
+                            answer != null -> Column(indent.fillMaxWidth().seeliCard(Seeli.Card, 12.dp, false).padding(10.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Row(Modifier.fillMaxWidth()) {
+                                    Text(t("comments.reply.yours"), style = ts(11, color = Seeli.Muted), modifier = Modifier.weight(1f))
+                                    Text(t("comments.reply.edit"), style = ts(11, FontWeight.Medium, Seeli.Green),
+                                        modifier = Modifier.tap { draft = answer; replyingTo = c.id })
+                                }
+                                Text(answer, style = ts(14, color = Seeli.Ink))
+                            }
+                            else -> Row(indent.tap { draft = ""; replyingTo = c.id }, verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Icon(Icons.AutoMirrored.Outlined.Reply, null, tint = Seeli.Green, modifier = Modifier.size(16.dp))
+                                Text(t("comments.reply"), style = ts(12, FontWeight.Medium, Seeli.Green))
+                            }
                         }
                     }
                 }

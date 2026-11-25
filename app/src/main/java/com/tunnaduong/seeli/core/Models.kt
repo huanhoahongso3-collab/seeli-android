@@ -50,7 +50,18 @@ data class PublicUser(val id: String, val name: String, val handle: String) {
 }
 
 @Serializable
-data class Comment(val id: String, val text: String, val createdAt: Date, val author: PublicUser)
+data class Comment(
+    val id: String,
+    val text: String,
+    val createdAt: Date,
+    val author: PublicUser,
+    /** The photo owner's answer, seen only by this friend. */
+    val reply: String? = null,
+    val repliedAt: Date? = null,
+)
+
+@Serializable
+data class CommentReply(val reply: String, val repliedAt: Date)
 
 /** A photo the user took. The server only sends `photoUrl` once `revealAt` has passed. */
 @Serializable
@@ -93,6 +104,9 @@ data class FriendPost(
     val revealed: Boolean = false,
     val photoUrl: String? = null,
     val myComment: String? = null,
+    /** The author's answer to my perspective. */
+    val myCommentReply: String? = null,
+    val myCommentRepliedAt: Date? = null,
     val scene: Int = 0,
     /** When I opened this photo. A friend's photo can be opened only once. */
     val viewedAt: Date? = null,
