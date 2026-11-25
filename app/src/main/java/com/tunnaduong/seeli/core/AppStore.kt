@@ -253,9 +253,8 @@ object AppStore {
             ms?.let { moments = it; rescheduleNotifications() }
             fs?.let { friends = it }
             feed?.let { list ->
-                // Keep the local "viewed" mark if the server row is older than this app version.
-                val seen = friendPosts.associate { it.id to it.viewedAt }
-                friendPosts = list.map { p -> if (p.viewedAt == null && seen[p.id] != null) p.copy(viewedAt = seen[p.id]) else p }
+                // The server is the source of truth for "viewed" (it can be reset there).
+                friendPosts = list
                 markFeedSeen(list)
             }
             bl?.let { blocked = it }
