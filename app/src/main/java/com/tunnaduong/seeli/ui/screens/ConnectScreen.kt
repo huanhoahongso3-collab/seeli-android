@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
+import androidx.compose.material.icons.outlined.OpenInFull
 import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.QrCode2
 import androidx.compose.material.icons.outlined.Visibility
@@ -84,6 +85,9 @@ import kotlinx.coroutines.launch
 fun ConnectScreen() {
     val scope = rememberCoroutineScope()
     var commenting by remember { mutableStateOf<FriendPost?>(null) }
+    var viewing by remember { mutableStateOf<FriendPost?>(null) }
+    // Friends' photos can be seen, not captured.
+    SecureScreen()
     var refreshing by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { AppStore.refresh() }
     // Friends' photos are seen once: leaving this screen lets them go.
@@ -117,7 +121,7 @@ fun ConnectScreen() {
                     }
                 } else {
                     items(posts, key = { it.id }) { post ->
-                        FriendPostCard(post, onComment = { commenting = post }, onProfile = {
+                        FriendPostCard(post, onOpen = { viewing = post }, onComment = { commenting = post }, onProfile = {
                             if (AppStore.friend(post.author.id) != null) AppStore.push(Route.FriendProfile(post.author.id))
                         })
                         Spacer(Modifier.height(20.dp))
@@ -128,6 +132,8 @@ fun ConnectScreen() {
         }
     }
 
+    viewing?.let { post -> OncePhotoViewer(post) { viewing = null } }
+
     commenting?.let { post ->
         ModalBottomSheet(onDismissRequest = { commenting = null }, containerColor = Seeli.BG) {
             PerspectiveSheet(post) { commenting = null }
@@ -136,10 +142,10 @@ fun ConnectScreen() {
 }
 
 @Composable
-private fun FriendPostCard(post: FriendPost, onComment: () -> Unit, onProfile: () -> Unit) {
+private fun FriendPostCard(post: FriendPost, onOpen: () -> Unit, onComment: () -> Unit, onProfile: () -> Unit) {
     Column(Modifier.fillMaxWidth().seeliCard(radius = 26.dp).padding(14.dp)) {
         Box(Modifier.fillMaxWidth().height(250.dp).clip(RoundedCornerShape(6.dp))) {
-            OncePhotoTile(post)
+            OncePhotoTile(post, onOpen)
             Box(Modifier.align(Alignment.TopEnd).padding(10.dp)) { Chip("MY CIRCLE") }
         }
         InfoBox(post, onProfile, Modifier.padding(top = 12.dp))
@@ -203,7 +209,7 @@ private fun InfoBox(post: FriendPost, onProfile: () -> Unit, modifier: Modifier)
  * It stays only while you are on this screen; leave (or close the app) and it is gone for good.
  */
 @Composable
-private fun OncePhotoTile(post: FriendPost) {
+private fun OncePhotoTile(post: FriendPost, onOpen: () -> Unit) {
     var loading by remember { mutableStateOf(false) }
     val image = AppStore.onceImages[post.id]
     LaunchedEffect(post.id) {
@@ -217,12 +223,12 @@ private fun OncePhotoTile(post: FriendPost) {
         Landscape(post.scene)
         AnimatedVisibility(image != null, enter = fadeIn(tween(350))) {
             image?.let {
-                Box(Modifier.fillMaxSize()) {
+                Box(Modifier.fillMaxSize().tap(onClick = onOpen)) {
                     Image(it.asImageBitmap(), null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                     Row(Modifier.align(Alignment.BottomStart).padding(10.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.35f))
                         .padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                        Icon(Icons.Outlined.Visibility, null, tint = Color.White, modifier = Modifier.size(12.dp))
+                        Icon(Icons.Outlined.OpenInFull, null, tint = Color.White, modifier = Modifier.size(12.dp))
                         Text(t("connect.once.now"), style = ts(10, FontWeight.Medium, Color.White))
                     }
                 }

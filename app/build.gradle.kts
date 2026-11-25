@@ -21,7 +21,7 @@ android {
         applicationId = "com.tunnaduong.seeli"
         minSdk = 26
         targetSdk = 36
-        versionCode = 5
+        versionCode = 6
         versionName = "1.1"
         buildConfigField("String", "SEELI_API_URL", "\"https://seeli-api.tunnaduong.com\"")
         // Google Sign-In: the *Web* OAuth client ID (Credential Manager puts it in the token's aud).
