@@ -25,9 +25,9 @@ android {
         applicationId = "com.tunnaduong.seeli"
         minSdk = 26
         targetSdk = 36
-        versionCode = 9
+        versionCode = 10
         versionName = "1.2"
-        buildConfigField("String", "SEELI_API_URL", "\"https://seeli-api.tunnaduong.com\"")
+        buildConfigField("String", "SEELI_API_URL", "\"https://api.seeli.cam\"")
         // Google Sign-In: the *Web* OAuth client ID (Credential Manager puts it in the token's aud).
         // Empty = the Google button is hidden.
         buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"${project.findProperty("seeli.googleWebClientId") ?: ""}\"")
