@@ -292,8 +292,12 @@ object AppStore {
 
     /** Asks for permission once there is someone to hear from, then starts the feed check. */
     fun enableFriendPush() {
-        if (!isLoggedIn || !friendPushEnabled || friends.isEmpty()) return
-        if (!NotificationService.hasPermission(ctx)) { permissionRequest = "notifications"; return }
+        if (!isLoggedIn || !friendPushEnabled) return
+        if (!NotificationService.hasPermission(ctx)) {
+            // Only ask once there is someone to hear from; without friends, just wait.
+            if (friends.isNotEmpty()) permissionRequest = "notifications"
+            return
+        }
         NotificationService.startFriendWatch(ctx)
     }
 
@@ -419,6 +423,15 @@ object AppStore {
             "camera" -> setPath(Route.Camera)
             "memories" -> setPath(Route.Memories)
             "connect" -> setPath(Route.Connect)
+            "friend" -> {
+                val id = uri.lastPathSegment
+                scope.launch {
+                    // The new friend may not be in the local list yet.
+                    refresh()
+                    if (id != null && friend(id) != null) setPath(Route.Profile, Route.Friends, Route.FriendProfile(id))
+                    else setPath(Route.Profile, Route.Friends)
+                }
+            }
             "comments" -> {
                 pendingCommentsMoment = uri.lastPathSegment
                 setPath(Route.Memories)

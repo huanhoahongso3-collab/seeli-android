@@ -122,9 +122,12 @@ object NotificationService {
 
     /** A friend's perspective on my photo, or the owner's reply to mine. */
     fun postActivity(context: Context, item: ActivityItem) {
-        val comment = item.type == "comment"
-        val body = tf(if (comment) "notification.comment" else "notification.reply", item.user.name)
-        val link = if (comment) "seeli://comments/${item.momentId}" else "seeli://connect"
+        val (key, link) = when (item.type) {
+            "comment" -> "notification.comment" to "seeli://comments/${item.momentId}"
+            "friend_added" -> "notification.friend" to "seeli://friend/${item.user.id}"
+            else -> "notification.reply" to "seeli://connect"
+        }
+        val body = tf(key, item.user.name)
         post(context, CH_FRIENDS, (item.type + item.momentId + item.user.id).hashCode(), "SEELI", body, link)
     }
 }
