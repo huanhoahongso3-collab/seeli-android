@@ -11,6 +11,7 @@ import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.tunnaduong.seeli.BuildConfig
 import java.security.SecureRandom
 import android.util.Base64
+import android.util.Log
 
 /** The identity token the server verifies, plus what only the device knows. */
 data class SocialCredential(
@@ -20,10 +21,17 @@ data class SocialCredential(
     val name: String? = null,
 )
 
-class SocialAuthException(val cancelled: Boolean, val notConfigured: Boolean = false) : Exception() {
+class SocialAuthException(
+    val cancelled: Boolean,
+    val notConfigured: Boolean = false,
+    /** Google returned no account for this app (no account on the device, or the app's
+     *  signing certificate is not registered for this client ID in Google Cloud). */
+    val unavailable: Boolean = false,
+) : Exception() {
     val description: String? get() = when {
         cancelled -> null
         notConfigured -> t("error.provider_disabled")
+        unavailable -> t("error.google_unavailable")
         else -> t("error.generic")
     }
 }
@@ -43,9 +51,12 @@ object GoogleSignIn {
             CredentialManager.create(context).getCredential(context, request)
         } catch (_: GetCredentialCancellationException) {
             throw SocialAuthException(cancelled = true)
-        } catch (_: NoCredentialException) {
-            throw SocialAuthException(cancelled = true)
-        } catch (_: Exception) {
+        } catch (e: NoCredentialException) {
+            // Used to be treated as "cancelled", so the button silently did nothing.
+            Log.w("SEELI", "Google sign-in: no credential", e)
+            throw SocialAuthException(cancelled = false, unavailable = true)
+        } catch (e: Exception) {
+            Log.w("SEELI", "Google sign-in failed: ${e.javaClass.simpleName}", e)
             throw SocialAuthException(cancelled = false)
         }
         val cred = result.credential

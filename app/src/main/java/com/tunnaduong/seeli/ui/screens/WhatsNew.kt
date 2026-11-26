@@ -20,7 +20,7 @@ import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.PersonAddAlt
 import androidx.compose.material.icons.outlined.StarOutline
 import androidx.compose.material.icons.outlined.Swipe
-import androidx.compose.material.icons.outlined.TouchApp
+import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -51,7 +51,7 @@ object WhatsNew {
         "audience" to Icons.Outlined.StarOutline,
         "requests" to Icons.Outlined.PersonAddAlt,
         "connect" to Icons.Outlined.People,
-        "once" to Icons.Outlined.TouchApp,
+        "once" to Icons.Outlined.Visibility,
         "dark" to Icons.Outlined.DarkMode,
         "gestures" to Icons.Outlined.Swipe,
     )

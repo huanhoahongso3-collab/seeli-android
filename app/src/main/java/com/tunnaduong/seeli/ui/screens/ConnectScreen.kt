@@ -1,5 +1,11 @@
 package com.tunnaduong.seeli.ui.screens
 
+import kotlinx.coroutines.delay
+
+import androidx.compose.ui.layout.boundsInWindow
+
+import androidx.compose.ui.layout.onGloballyPositioned
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.core.tween
@@ -11,7 +17,6 @@ import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.PersonAddAlt
-import androidx.compose.material.icons.outlined.TouchApp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -120,9 +125,15 @@ fun ConnectScreen() {
     DisposableEffect(Unit) { onDispose { AppStore.forgetOncePhotos() } }
 
     val posts = AppStore.friendPosts
-    val newPosts = posts.filter { it.viewedAt == null }.sortedByDescending { it.createdAt }
-    val activePosts = posts.filter { it.viewedAt != null && it.hasMyActivity }.sortedByDescending { it.lastActivityAt ?: it.createdAt }
-    val olderPosts = posts.filter { it.viewedAt != null && !it.hasMyActivity }.sortedByDescending { it.createdAt }
+    // Posts unopened at some point during this visit stay in "New" until the next visit: if a post
+    // jumped out of the section the moment it was seen, the next one would slide into its place on
+    // screen and be counted as seen too.
+    var keptNew by remember { mutableStateOf(setOf<String>()) }
+    LaunchedEffect(posts) { keptNew = keptNew + posts.filter { it.viewedAt == null }.map { it.id } }
+    fun isNew(p: FriendPost) = p.viewedAt == null || p.id in keptNew
+    val newPosts = posts.filter(::isNew).sortedByDescending { it.createdAt }
+    val activePosts = posts.filter { !isNew(it) && it.hasMyActivity }.sortedByDescending { it.lastActivityAt ?: it.createdAt }
+    val olderPosts = posts.filter { !isNew(it) && !it.hasMyActivity }.sortedByDescending { it.createdAt }
     val weekAgo = Instant.now().minus(7, ChronoUnit.DAYS)
     val recent = AppStore.activity.filter { it.type != "friend_added" || it.at > weekAgo }.sortedByDescending { it.at }
 
@@ -339,16 +350,27 @@ private fun InfoBox(post: FriendPost, onProfile: () -> Unit, modifier: Modifier)
 }
 
 /**
- * A friend's photo opens only when you tap it (once, after a confirmation), then shows full screen.
- * It stays in the card while you are on this screen; leave (or close the app) and it is gone for good.
+ * A friend's photo shows right in the card — but only once the card is really on screen (most
+ * of it, for a moment), so photos you scroll past or that are composed below the fold are not
+ * counted as seen. It stays while you are on this screen; leave (or close the app) and it is gone.
  */
 @Composable
 private fun OncePhotoTile(post: FriendPost, onOpen: () -> Unit) {
-    val scope = rememberCoroutineScope()
     var loading by remember { mutableStateOf(false) }
-    var confirming by remember { mutableStateOf(false) }
+    var onScreen by remember { mutableStateOf(false) }
     val image = AppStore.onceImages[post.id]
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+    LaunchedEffect(onScreen) {
+        if (!onScreen || post.viewedAt != null || AppStore.onceImages[post.id] != null) return@LaunchedEffect
+        delay(800) // cancelled if it scrolls away first
+        loading = true
+        AppStore.loadOncePhoto(post.id)
+        loading = false
+    }
+    Box(Modifier.fillMaxSize().onGloballyPositioned { c ->
+        // boundsInWindow is clipped by the scrolling list, so this is the visible part.
+        val h = c.size.height
+        onScreen = h > 0 && c.boundsInWindow().height / h >= 0.6f
+    }, contentAlignment = Alignment.Center) {
         Landscape(post.scene)
         AnimatedVisibility(image != null, enter = fadeIn(tween(350))) {
             image?.let {
@@ -375,34 +397,6 @@ private fun OncePhotoTile(post: FriendPost, onOpen: () -> Unit) {
                     Text(tf("connect.once.seen.at", DateText.stamp(seen)), style = ts(11, color = Color.White.copy(alpha = 0.85f)))
                 }
             }
-            else -> Box(Modifier.fillMaxSize().tap { confirming = true }, contentAlignment = Alignment.Center) {
-                Column(Modifier.clip(RoundedCornerShape(18.dp)).background(Color.Black.copy(alpha = 0.28f)).padding(horizontal = 22.dp, vertical = 16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Icon(Icons.Outlined.TouchApp, null, tint = Color.White, modifier = Modifier.size(28.dp))
-                    Text(t("connect.once.tap"), style = ts(15, FontWeight.SemiBold, Color.White))
-                    Text(t("connect.once.hint"), style = ts(11, color = Color.White.copy(alpha = 0.85f)))
-                }
-            }
         }
-    }
-    if (confirming) {
-        AlertDialog(
-            onDismissRequest = { confirming = false },
-            containerColor = Seeli.BG,
-            title = { Text(t("connect.once.confirm.title"), style = ts(17, FontWeight.SemiBold, Seeli.Ink)) },
-            text = { Text(t("connect.once.confirm.body"), style = ts(14, color = Seeli.Muted)) },
-            confirmButton = {
-                TextButton({
-                    confirming = false
-                    loading = true
-                    scope.launch {
-                        AppStore.loadOncePhoto(post.id)
-                        loading = false
-                        if (AppStore.onceImages[post.id] != null) onOpen()
-                    }
-                }) { Text(t("connect.once.confirm.ok"), color = Seeli.Green) }
-            },
-            dismissButton = { TextButton({ confirming = false }) { Text(t("common.cancel"), color = Seeli.Ink) } },
-        )
     }
 }
