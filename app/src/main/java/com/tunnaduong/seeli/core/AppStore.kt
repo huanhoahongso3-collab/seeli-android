@@ -298,13 +298,20 @@ object AppStore {
             if (friends.isNotEmpty()) permissionRequest = "notifications"
             return
         }
-        NotificationService.startFriendWatch(ctx)
+        scope.launch {
+            // Real push through Firebase when this build has it; otherwise check every ~15 minutes.
+            // Never both, or every event would be announced twice.
+            if (Push.enable(ctx)) NotificationService.stopFriendWatch(ctx) else NotificationService.startFriendWatch(ctx)
+        }
     }
 
     fun setFriendPush(on: Boolean) {
         friendPushEnabled = on
         save()
-        if (on) enableFriendPush() else NotificationService.stopFriendWatch(ctx)
+        if (on) enableFriendPush() else {
+            NotificationService.stopFriendWatch(ctx)
+            scope.launch { Push.disable(ctx) }
+        }
     }
 
     // ---- Moments

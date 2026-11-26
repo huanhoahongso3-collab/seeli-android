@@ -7,6 +7,10 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization")
 }
 
+// Firebase (push) config is kept out of the public repo. Without it the app still builds
+// and falls back to checking for news in the background.
+if (file("google-services.json").exists()) apply(plugin = "com.google.gms.google-services")
+
 // Release signing comes from keystore.properties (never committed).
 val keystoreProps = Properties().apply {
     val f = rootProject.file("keystore.properties")
@@ -21,7 +25,7 @@ android {
         applicationId = "com.tunnaduong.seeli"
         minSdk = 26
         targetSdk = 36
-        versionCode = 8
+        versionCode = 9
         versionName = "1.2"
         buildConfigField("String", "SEELI_API_URL", "\"https://seeli-api.tunnaduong.com\"")
         // Google Sign-In: the *Web* OAuth client ID (Credential Manager puts it in the token's aud).
@@ -73,6 +77,7 @@ dependencies {
 
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.2")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
     implementation("androidx.exifinterface:exifinterface:1.4.1")
@@ -89,4 +94,7 @@ dependencies {
     implementation("androidx.credentials:credentials:1.5.0")
     implementation("androidx.credentials:credentials-play-services-auth:1.5.0")
     implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
+
+    implementation(platform("com.google.firebase:firebase-bom:33.16.0"))
+    implementation("com.google.firebase:firebase-messaging")
 }

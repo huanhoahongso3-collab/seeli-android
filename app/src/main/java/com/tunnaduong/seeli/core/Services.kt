@@ -55,7 +55,7 @@ import kotlin.random.Random
 
 object NotificationService {
     private const val CH_REUNION = "reunion"
-    private const val CH_FRIENDS = "friends"
+    const val CH_FRIENDS = "friends"
 
     fun createChannels(context: Context) {
         if (Build.VERSION.SDK_INT < 26) return
