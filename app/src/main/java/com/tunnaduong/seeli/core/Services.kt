@@ -119,6 +119,14 @@ object NotificationService {
         }
         post(context, CH_FRIENDS, post.id.hashCode(), post.author.name, body, "seeli://connect")
     }
+
+    /** A friend's perspective on my photo, or the owner's reply to mine. */
+    fun postActivity(context: Context, item: ActivityItem) {
+        val comment = item.type == "comment"
+        val body = tf(if (comment) "notification.comment" else "notification.reply", item.user.name)
+        val link = if (comment) "seeli://comments/${item.momentId}" else "seeli://connect"
+        post(context, CH_FRIENDS, (item.type + item.momentId + item.user.id).hashCode(), "SEELI", body, link)
+    }
 }
 
 class ReunionWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
@@ -140,13 +148,25 @@ class FriendPostWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker
         if (!prefs.getBoolean("seeli.friendPush", true)) return Result.success()
         val feed = runCatching { ApiClient.request<List<FriendPost>>("GET", "feed") }.getOrElse { return Result.retry() }
         val last = prefs.getLong("seeli.feedSeen", -1L)
-        val newest = feed.maxOfOrNull { it.createdAt.toEpochMilli() } ?: return Result.success()
+        val newest = feed.maxOfOrNull { it.createdAt.toEpochMilli() } ?: run { checkActivity(ctx, prefs); return Result.success() }
         if (last >= 0) {
             feed.filter { it.createdAt.toEpochMilli() > last }.sortedBy { it.createdAt }.takeLast(5)
                 .forEach { NotificationService.postFriend(ctx, it) }
         }
         prefs.edit().putLong("seeli.feedSeen", maxOf(newest, last)).apply()
+        checkActivity(ctx, prefs)
         return Result.success()
+    }
+
+    /** New perspectives on my photos and replies to mine (iPhone gets these as push). */
+    private suspend fun checkActivity(ctx: Context, prefs: android.content.SharedPreferences) {
+        val since = prefs.getLong("seeli.activitySeen", -1L)
+        val res = runCatching {
+            ApiClient.request<ActivityFeed>("GET", "activity?since=${maxOf(since, 0L)}")
+        }.getOrNull() ?: return
+        // First run only sets the mark, so old comments are not announced.
+        if (since >= 0) res.items.sortedBy { it.at }.takeLast(5).forEach { NotificationService.postActivity(ctx, it) }
+        prefs.edit().putLong("seeli.activitySeen", res.now.toEpochMilli()).apply()
     }
 }
 

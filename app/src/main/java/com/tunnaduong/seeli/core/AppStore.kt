@@ -59,6 +59,8 @@ object AppStore {
     val path = mutableStateListOf<Route>()
     var now by mutableStateOf(Instant.now())
     var pendingInvite by mutableStateOf<FriendInvite?>(null)
+    /** A moment whose comments should open (tapped a "new perspective" notification). */
+    var pendingCommentsMoment by mutableStateOf<String?>(null)
     var isSyncing by mutableStateOf(false)
     /** True right after sign-up, so the "account created" screen shows before entering. */
     var welcomePending by mutableStateOf(false)
@@ -417,6 +419,11 @@ object AppStore {
             "camera" -> setPath(Route.Camera)
             "memories" -> setPath(Route.Memories)
             "connect" -> setPath(Route.Connect)
+            "comments" -> {
+                pendingCommentsMoment = uri.lastPathSegment
+                setPath(Route.Memories)
+                scope.launch { refresh() }
+            }
             "reunion" -> {
                 refreshClock()
                 dueMoments.firstOrNull()?.let { setPath(Route.Reunion(it.id)) } ?: path.clear()

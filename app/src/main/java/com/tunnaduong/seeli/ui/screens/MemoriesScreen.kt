@@ -104,6 +104,13 @@ fun MemoriesScreen() {
     val zone = ZoneId.systemDefault()
     val inMonth = AppStore.allMoments.filter { YearMonth.from(it.createdAt.atZone(zone)) == month }.sortedByDescending { it.createdAt }
     val isCurrent = month == YearMonth.now()
+    // Opened from a notification: jump to that photo's month and show its comments.
+    LaunchedEffect(AppStore.pendingCommentsMoment, AppStore.moments.size) {
+        val m = AppStore.pendingCommentsMoment?.let { AppStore.moment(it) } ?: return@LaunchedEffect
+        AppStore.pendingCommentsMoment = null
+        month = YearMonth.from(m.createdAt.atZone(zone))
+        viewingComments = m
+    }
 
     SeeliScreen("MY MEMORIES", t("memories.subtitle")) {
         LazyColumn(Modifier.weight(1f).padding(horizontal = 24.dp)) {

@@ -60,6 +60,13 @@ data class Comment(
     val repliedAt: Date? = null,
 )
 
+/** GET /activity: perspectives on my photos and replies to mine since a time. */
+@Serializable
+data class ActivityItem(val type: String, val momentId: String, val at: Date, val user: PublicUser)
+
+@Serializable
+data class ActivityFeed(val now: Date, val items: List<ActivityItem>)
+
 @Serializable
 data class CommentReply(val reply: String, val repliedAt: Date)
 
