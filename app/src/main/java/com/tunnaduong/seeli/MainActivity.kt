@@ -57,6 +57,10 @@ import com.tunnaduong.seeli.ui.screens.QRScanScreen
 import com.tunnaduong.seeli.ui.screens.ReunionScreen
 import com.tunnaduong.seeli.ui.screens.SettingsScreen
 import com.tunnaduong.seeli.ui.screens.VerifiedScreen
+import com.tunnaduong.seeli.ui.screens.WhatsNew
+import com.tunnaduong.seeli.ui.screens.WhatsNewSheet
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import kotlinx.coroutines.launch
 
 class SeeliApplication : Application() {
@@ -77,7 +81,17 @@ class MainActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
         )
         handleIntent(intent)
-        setContent { SeeliTheme { Root() } }
+        setContent {
+            SeeliTheme {
+                // Status / navigation bar icons follow the app's light or dark look.
+                LaunchedEffect(Seeli.dark) {
+                    val style = if (Seeli.dark) SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
+                        else SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT)
+                    enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
+                }
+                Root()
+            }
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -166,6 +180,22 @@ private fun MainFlow() {
             Route.MyQR -> MyQRScreen()
             is Route.Reunion -> ReunionScreen(route.id)
             is Route.MomentDetail -> ReunionScreen(route.id)
+        }
+    }
+
+    // "What's new" once per version, a moment after opening (not over a pending invite).
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    var showWhatsNew by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        if (WhatsNew.isPending(ctx)) {
+            kotlinx.coroutines.delay(600)
+            if (AppStore.pendingInvite == null) showWhatsNew = true
+        }
+    }
+    if (showWhatsNew) {
+        ModalBottomSheet({ WhatsNew.markSeen(ctx); showWhatsNew = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = Seeli.BG) {
+            WhatsNewSheet { WhatsNew.markSeen(ctx); showWhatsNew = false }
         }
     }
 

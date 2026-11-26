@@ -66,6 +66,7 @@ import com.tunnaduong.seeli.core.t
 import com.tunnaduong.seeli.core.tf
 import com.tunnaduong.seeli.core.userMessage
 import com.tunnaduong.seeli.ui.ErrorText
+import com.tunnaduong.seeli.ui.LinkText
 import com.tunnaduong.seeli.ui.EyeLogo
 import com.tunnaduong.seeli.ui.Gap
 import com.tunnaduong.seeli.ui.LabeledField
@@ -162,7 +163,7 @@ private fun SocialButtons(onError: (String?) -> Unit, modifier: Modifier = Modif
             Box(Modifier.weight(1f).height(1.dp).background(Seeli.Line))
         }
         Box(
-            Modifier.fillMaxWidth().height(54.dp).clip(RoundedCornerShape(16.dp)).background(Color.White)
+            Modifier.fillMaxWidth().height(54.dp).clip(RoundedCornerShape(16.dp)).background(Seeli.Surface)
                 .border(1.dp, Seeli.Line, RoundedCornerShape(16.dp))
                 .tap(enabled = !busy) {
                     busy = true; onError(null)
@@ -213,12 +214,17 @@ private fun SignUpScreen(onBack: () -> Unit) {
     var handle by rememberSaveable { mutableStateOf("") }
     var email by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
-    var agreed by rememberSaveable { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val cleanHandle = handle.trim().lowercase().replace("@", "")
-    val valid = name.isNotBlank() && cleanHandle.length in 2..30 && cleanHandle.all { it in "abcdefghijklmnopqrstuvwxyz0123456789._-" } &&
-        email.contains("@") && email.contains(".") && password.length >= 8 && agreed
+    // The first thing to fix; the button says it instead of silently staying grey.
+    val problem = when {
+        name.isBlank() -> "signup.check.name"
+        cleanHandle.length !in 2..30 || !cleanHandle.all { it in "abcdefghijklmnopqrstuvwxyz0123456789._-" } -> "signup.check.handle"
+        !email.trim().contains("@") || !email.trim().contains(".") -> "signup.check.email"
+        password.length < 8 -> "signup.check.password"
+        else -> null
+    }
 
     Column(Modifier.fillMaxSize().background(Seeli.BG).statusBarsPadding().navigationBarsPadding().imePadding()) {
         SeeliHeader("SIGN UP", t("signup.header"), Leading.BACK, onBack)
@@ -233,13 +239,11 @@ private fun SignUpScreen(onBack: () -> Unit) {
                 LabeledField(t("field.email"), "you@example.com", email, { email = it }, keyboard = KeyboardType.Email)
                 LabeledField(t("field.password"), t("field.password.hint"), password, { password = it }, secure = true)
             }
-            Row(Modifier.padding(top = 22.dp).tap { agreed = !agreed }, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Icon(if (agreed) Icons.Filled.CheckCircle else Icons.Outlined.RadioButtonUnchecked, null,
-                    tint = if (agreed) Seeli.Green else Seeli.Muted, modifier = Modifier.size(20.dp))
-                Text(t("signup.promise"), style = ts(13, color = Seeli.Ink))
-            }
+            // Signing up means agreeing to the Terms of Use (links open in the browser).
+            LinkText(t("signup.terms"), ts(12, color = Seeli.Muted), Modifier.padding(top = 22.dp))
             ErrorText(error, Modifier.padding(top = 16.dp))
-            PrimaryButton(modifier = Modifier.padding(top = 28.dp), enabled = valid && !busy, onClick = {
+            PrimaryButton(modifier = Modifier.padding(top = 28.dp), enabled = !busy, onClick = {
+                if (problem != null) { error = t(problem); return@PrimaryButton }
                 busy = true; error = null
                 scope.launch {
                     try {

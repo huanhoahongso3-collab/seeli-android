@@ -47,6 +47,7 @@ import com.tunnaduong.seeli.core.AppLanguage
 import com.tunnaduong.seeli.core.AppStore
 import com.tunnaduong.seeli.core.L10n
 import com.tunnaduong.seeli.core.t
+import androidx.compose.ui.text.withLink
 
 enum class Leading { HOME, BACK, NONE }
 
@@ -106,7 +107,7 @@ fun Avatar(initial: String, size: Dp = 44.dp) {
 fun Chip(text: String) {
     Text(
         text, style = ts(10, FontWeight.SemiBold, Seeli.Green, 1.2.sp),
-        modifier = Modifier.clip(CircleShape).background(Color.White.copy(alpha = 0.85f)).padding(horizontal = 12.dp, vertical = 6.dp),
+        modifier = Modifier.clip(CircleShape).background(Seeli.Surface.copy(alpha = 0.88f)).padding(horizontal = 12.dp, vertical = 6.dp),
     )
 }
 
@@ -224,4 +225,22 @@ fun HairLine(modifier: Modifier = Modifier) = Box(modifier.fillMaxWidth().height
 @Composable
 fun Capsule(text: String, modifier: Modifier = Modifier, bg: Color = Color.White, fg: Color = Seeli.Muted) {
     Text(text, style = ts(11, color = fg), modifier = modifier.clip(RoundedCornerShape(50)).background(bg).padding(horizontal = 12.dp, vertical = 6.dp))
+}
+
+/** Text with "[label](https://…)" markdown links, the same strings iOS renders. */
+@Composable
+fun LinkText(text: String, style: androidx.compose.ui.text.TextStyle, modifier: Modifier = Modifier) {
+    val pattern = Regex("""\[([^\]]+)\]\(([^)]+)\)""")
+    val annotated = androidx.compose.ui.text.buildAnnotatedString {
+        var last = 0
+        pattern.findAll(text).forEach { m ->
+            append(text.substring(last, m.range.first))
+            val link = androidx.compose.ui.text.LinkAnnotation.Url(m.groupValues[2],
+                androidx.compose.ui.text.TextLinkStyles(androidx.compose.ui.text.SpanStyle(color = Seeli.Green, fontWeight = FontWeight.Medium)))
+            withLink(link) { append(m.groupValues[1]) }
+            last = m.range.last + 1
+        }
+        append(text.substring(last))
+    }
+    Text(annotated, style = style, modifier = modifier)
 }

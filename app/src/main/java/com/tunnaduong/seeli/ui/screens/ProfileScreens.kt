@@ -1,5 +1,7 @@
 package com.tunnaduong.seeli.ui.screens
 
+import androidx.compose.material.icons.automirrored.outlined.OpenInNew
+
 import com.tunnaduong.seeli.core.DateText
 
 import androidx.compose.material3.CircularProgressIndicator
@@ -115,13 +117,13 @@ fun ProfileScreen() {
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(account.name, style = ts(22, FontWeight.SemiBold, Seeli.Ink))
                         Text("@${account.handle}", style = ts(13, color = Seeli.Muted))
-                        Row(Modifier.clip(CircleShape).background(Color.White).tap { editing = true }.padding(horizontal = 14.dp, vertical = 8.dp),
+                        Row(Modifier.clip(CircleShape).background(Seeli.Surface).tap { editing = true }.padding(horizontal = 14.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             Icon(Icons.Outlined.Edit, null, tint = Seeli.Ink, modifier = Modifier.size(14.dp))
                             Text(t("profile.edit"), style = ts(12, color = Seeli.Ink), maxLines = 1)
                         }
                     }
-                    Box(Modifier.size(56.dp).clip(RoundedCornerShape(14.dp)).background(Color.White).tap { AppStore.push(Route.MyQR) },
+                    Box(Modifier.size(56.dp).clip(RoundedCornerShape(14.dp)).background(Seeli.Surface).tap { AppStore.push(Route.MyQR) },
                         contentAlignment = Alignment.Center) { Icon(Icons.Outlined.QrCode2, t("myqr.title"), tint = Seeli.Ink, modifier = Modifier.size(28.dp)) }
                 }
                 if (account.bio.isNotEmpty()) {
@@ -387,6 +389,30 @@ fun SettingsScreen() {
                 SeeliTextField(serverURL, { serverURL = it; ApiClient.baseURLString = it }, ApiClient.defaultBaseURL, Modifier.fillMaxWidth(),
                     keyboard = KeyboardType.Uri, fontSize = 13)
                 Text(t("settings.server.hint"), style = ts(11, color = Seeli.Muted))
+            }
+            Group(t("settings.appearance")) {
+                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Seeli.Card).padding(2.dp)) {
+                    listOf("system" to t("settings.appearance.system"), "light" to t("settings.appearance.light"), "dark" to t("settings.appearance.dark"))
+                        .forEach { (value, label) ->
+                            val on = AppStore.appearance == value
+                            Box(Modifier.weight(1f).clip(RoundedCornerShape(8.dp)).background(if (on) Seeli.Surface else Color.Transparent)
+                                .tap { AppStore.chooseAppearance(value) }.padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
+                                Text(label, style = ts(13, if (on) FontWeight.SemiBold else FontWeight.Normal, Seeli.Ink))
+                            }
+                        }
+                }
+            }
+            Group(t("settings.legal")) {
+                val ctx = androidx.compose.ui.platform.LocalContext.current
+                val q = if (L10n.language == AppLanguage.JA) "?lang=ja" else ""
+                listOf(t("settings.terms") to "https://seeli.cam/terms$q", t("settings.privacyPolicy") to "https://seeli.cam/privacy$q").forEach { (label, url) ->
+                    Row(Modifier.fillMaxWidth().tap {
+                        ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)))
+                    }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(label, style = ts(15, color = Seeli.Ink), modifier = Modifier.weight(1f))
+                        Icon(Icons.AutoMirrored.Outlined.OpenInNew, null, tint = Seeli.Muted, modifier = Modifier.size(16.dp))
+                    }
+                }
             }
             Group(t("settings.account")) {
                 AppStore.account?.let { a ->

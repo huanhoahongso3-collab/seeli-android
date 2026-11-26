@@ -58,6 +58,13 @@ object AppStore {
     var notificationsEnabled by mutableStateOf(true)
     /** Notify when a friend shares to the circle. */
     var friendPushEnabled by mutableStateOf(true)
+    /** "system", "light" or "dark" (kept in prefs, read before the first frame). */
+    var appearance by mutableStateOf("system")
+        private set
+    fun chooseAppearance(value: String) {
+        appearance = value
+        ctx.getSharedPreferences("seeli.prefs", Context.MODE_PRIVATE).edit().putString("seeli.appearance", value).apply()
+    }
 
     // Session (not persisted)
     var draft = Draft()
@@ -100,6 +107,7 @@ object AppStore {
 
     fun init(context: Context) {
         ctx = context.applicationContext
+        appearance = ctx.getSharedPreferences("seeli.prefs", Context.MODE_PRIVATE).getString("seeli.appearance", "system") ?: "system"
         api.onUnauthorized = { if (account != null) clearSession() }
         load()
         updateWidgets()
@@ -160,6 +168,7 @@ object AppStore {
         val res = api.request<AuthResponse>("POST", "auth/signup",
             mapOf("name" to name, "handle" to handle, "email" to email, "password" to password))
         welcomePending = true
+        com.tunnaduong.seeli.ui.screens.WhatsNew.markSeen(ctx) // everything is new to a new account
         startSession(res)
     }
 
@@ -169,6 +178,7 @@ object AppStore {
             mapOf("idToken" to c.idToken, "nonce" to c.nonce, "name" to c.name))
         val isNew = res.isNew ?: false
         welcomePending = isNew
+        if (isNew) com.tunnaduong.seeli.ui.screens.WhatsNew.markSeen(ctx)
         startSession(res)
         if (!isNew) refresh()
         return isNew

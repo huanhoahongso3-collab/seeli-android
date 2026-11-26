@@ -12,6 +12,10 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.lightColorScheme
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -33,18 +37,22 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 object Seeli {
-    val BG = Color(0xFFF6F5F0)
-    val Card = Color(0xFFECEBE4)
-    val Surface = Color(0xFFFFFFFE)
-    val Green = Color(0xFF5F6B4E)
-    val GreenSoft = Color(0xFFA9B79C)
-    val GreenPale = Color(0xFFC9D3BE)
-    val Ink = Color(0xFF2F302B)
-    val Muted = Color(0xFF8B8C84)
-    val Line = Color(0xFFE2E1DA)
-    val Sun = Color(0xFFF5D38A)
+    /** Set by [SeeliTheme]; every colour below follows it (warm paper by day, warm night by night). */
+    var dark by mutableStateOf(false)
+
+    private fun c(light: Long, night: Long) = Color(if (dark) night else light)
+    val BG get() = c(0xFFF6F5F0, 0xFF161713)
+    val Card get() = c(0xFFECEBE4, 0xFF2A2C25)
+    val Surface get() = c(0xFFFFFFFE, 0xFF1F211C)
+    val Green get() = c(0xFF5F6B4E, 0xFF7D8D65)
+    val GreenSoft get() = c(0xFFA9B79C, 0xFF4A5440)
+    val GreenPale get() = c(0xFFC9D3BE, 0xFF3B4433)
+    val Ink get() = c(0xFF2F302B, 0xFFECEAE2)
+    val Muted get() = c(0xFF8B8C84, 0xFF9C9D94)
+    val Line get() = c(0xFFE2E1DA, 0xFF33352E)
+    val Sun get() = c(0xFFF5D38A, 0xFFE0C07A)
     val Night = Color(0xFF1F211D)
-    val Error = Color(0xFFB0574A)
+    val Error get() = c(0xFFB0574A, 0xFFD07A6C)
 
     /** Mincho / serif for "words": memory notes, vertical text. */
     val Mincho = FontFamily.Serif
@@ -55,13 +63,19 @@ fun ts(size: Int, weight: FontWeight = FontWeight.Normal, color: Color = Color.U
 
 @Composable
 fun SeeliTheme(content: @Composable () -> Unit) {
-    MaterialTheme(
-        colorScheme = lightColorScheme(
-            primary = Seeli.Green, onPrimary = Color.White, background = Seeli.BG, surface = Seeli.BG,
-            onSurface = Seeli.Ink, onBackground = Seeli.Ink, secondary = Seeli.Green,
-            surfaceContainerHigh = Seeli.BG, surfaceContainerLow = Seeli.BG, surfaceContainer = Seeli.BG,
-        ),
-    ) {
+    val system = isSystemInDarkTheme()
+    val dark = when (com.tunnaduong.seeli.core.AppStore.appearance) { "dark" -> true; "light" -> false; else -> system }
+    Seeli.dark = dark
+    val scheme = if (dark) darkColorScheme(
+        primary = Seeli.Green, onPrimary = Color.White, background = Seeli.BG, surface = Seeli.BG,
+        onSurface = Seeli.Ink, onBackground = Seeli.Ink, secondary = Seeli.Green,
+        surfaceContainerHigh = Seeli.BG, surfaceContainerLow = Seeli.BG, surfaceContainer = Seeli.BG,
+    ) else lightColorScheme(
+        primary = Seeli.Green, onPrimary = Color.White, background = Seeli.BG, surface = Seeli.BG,
+        onSurface = Seeli.Ink, onBackground = Seeli.Ink, secondary = Seeli.Green,
+        surfaceContainerHigh = Seeli.BG, surfaceContainerLow = Seeli.BG, surfaceContainer = Seeli.BG,
+    )
+    MaterialTheme(colorScheme = scheme) {
         CompositionLocalProvider(LocalContentColor provides Seeli.Ink) { content() }
     }
 }

@@ -133,7 +133,7 @@ fun PostScreen() {
                 Modifier.fillMaxWidth().seeliCard(Seeli.Card, 24.dp, false).padding(vertical = 24.dp, horizontal = 16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Box(Modifier.size(56.dp).clip(CircleShape).background(Color.White), contentAlignment = Alignment.Center) { EyeLogo(22.dp, closed = true) }
+                Box(Modifier.size(56.dp).clip(CircleShape).background(Seeli.Surface), contentAlignment = Alignment.Center) { EyeLogo(22.dp, closed = true) }
                 Text(t("post.hidden.title"), style = ts(17, FontWeight.SemiBold, Seeli.Ink))
                 Text(t("post.hidden.body"), style = ts(12, color = Seeli.Muted).copy(lineHeight = 17.sp), textAlign = TextAlign.Center)
                 Text(t("post.hidden.auto"), style = ts(11, color = Seeli.Muted), modifier = Modifier.padding(top = 6.dp))
@@ -260,7 +260,7 @@ private fun AudienceOption(option: Audience, selected: Boolean, detail: String?,
             if (detail != null) Text(detail, style = ts(12, color = Seeli.Green))
         }
         if (disabled) Text(t("audience.soon"), style = ts(11, color = Seeli.Muted),
-            modifier = Modifier.clip(CircleShape).background(Color.White).padding(horizontal = 12.dp, vertical = 6.dp))
+            modifier = Modifier.clip(CircleShape).background(Seeli.Surface).padding(horizontal = 12.dp, vertical = 6.dp))
     }
 }
 

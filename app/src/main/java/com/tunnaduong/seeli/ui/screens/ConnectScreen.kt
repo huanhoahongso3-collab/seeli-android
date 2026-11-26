@@ -368,7 +368,7 @@ private fun OncePhotoTile(post: FriendPost, onOpen: () -> Unit) {
             image != null -> {}
             loading -> CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(28.dp))
             seen != null -> {
-                Box(Modifier.fillMaxSize().background(Seeli.Ink.copy(alpha = 0.45f)))
+                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.42f)))
                 Column(Modifier.padding(horizontal = 20.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Icon(Icons.Outlined.VisibilityOff, null, tint = Color.White, modifier = Modifier.size(26.dp))
                     Text(t("connect.once.seen"), style = ts(14, FontWeight.Medium, Color.White), textAlign = TextAlign.Center)
