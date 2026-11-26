@@ -22,7 +22,7 @@ android {
         minSdk = 26
         targetSdk = 36
         versionCode = 6
-        versionName = "1.1"
+        versionName = "1.2"
         buildConfigField("String", "SEELI_API_URL", "\"https://seeli-api.tunnaduong.com\"")
         // Google Sign-In: the *Web* OAuth client ID (Credential Manager puts it in the token's aud).
         // Empty = the Google button is hidden.
