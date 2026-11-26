@@ -1,5 +1,7 @@
 package com.tunnaduong.seeli.ui.screens
 
+import androidx.compose.foundation.layout.offset
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -105,7 +107,10 @@ fun HomeScreen() {
         Spacer(Modifier.weight(1f).heightIn(min = 20.dp))
         HairLine(Modifier.padding(horizontal = 24.dp))
         Row(Modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 26.dp), verticalAlignment = Alignment.CenterVertically) {
-            NavLabel(Icons.Outlined.People, "Let's connect") { AppStore.push(Route.Connect) }
+            Box {
+                NavLabel(Icons.Outlined.People, "Let's connect") { AppStore.push(Route.Connect) }
+                CountBadge(AppStore.connectBadge + AppStore.friendRequests.incoming.size, Modifier.align(Alignment.TopStart).offset(x = 12.dp, y = (-10).dp))
+            }
             Spacer(Modifier.weight(1f))
             NavLabel(Icons.Outlined.Folder, "Memories") { AppStore.push(Route.Memories) }
         }

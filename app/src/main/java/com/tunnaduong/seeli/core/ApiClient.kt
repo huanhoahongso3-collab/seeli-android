@@ -1,5 +1,8 @@
 package com.tunnaduong.seeli.core
 
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.serializer
+
 import android.content.Context
 import android.content.SharedPreferences
 import android.graphics.Bitmap
@@ -129,6 +132,10 @@ object ApiClient {
             .addFormDataPart("note", p.note)
             .apply { p.placeName?.let { addFormDataPart("placeName", it) } }
             .addFormDataPart("audience", p.audience.raw)
+            .apply {
+                if (p.audience == Audience.SELECTED && !p.recipients.isNullOrEmpty())
+                    addFormDataPart("recipients", json.encodeToString(ListSerializer(String.serializer()), p.recipients))
+            }
             .addFormDataPart("createdAt", InstantSerializer.run { p.createdAt.toString() })
             .addFormDataPart("demo", if (p.demo) "true" else "false")
             .addFormDataPart("photo", "photo.jpg", jpeg.toRequestBody("image/jpeg".toMediaType()))

@@ -75,6 +75,8 @@ import com.tunnaduong.seeli.core.FriendInvite
 import com.tunnaduong.seeli.core.QRCode
 import com.tunnaduong.seeli.core.Route
 import com.tunnaduong.seeli.core.t
+import com.tunnaduong.seeli.ui.ErrorText
+import com.tunnaduong.seeli.core.tf
 import com.tunnaduong.seeli.ui.Avatar
 import com.tunnaduong.seeli.ui.Leading
 import com.tunnaduong.seeli.ui.PrimaryButton
@@ -230,7 +232,7 @@ fun MyQRScreen() {
     }
 }
 
-/** Shown as a bottom sheet when an invite QR / link arrives. */
+/** Shown as a bottom sheet when an invite QR / link arrives. Sends a friend request. */
 @Composable
 fun AddFriendSheet(invite: FriendInvite, onDismiss: () -> Unit) {
     val scope = rememberCoroutineScope()
@@ -238,6 +240,7 @@ fun AddFriendSheet(invite: FriendInvite, onDismiss: () -> Unit) {
     var failed by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var added by remember { mutableStateOf<Friend?>(null) }
+    var requested by remember { mutableStateOf(false) }
     LaunchedEffect(invite) {
         try { preview = AppStore.preview(invite) } catch (_: Exception) { failed = true }
     }
@@ -246,8 +249,10 @@ fun AddFriendSheet(invite: FriendInvite, onDismiss: () -> Unit) {
         failed -> t("addFriend.notFound")
         p == null -> ""
         added != null -> t("addFriend.done")
+        requested || p.requested == true -> tf("addFriend.requested", p.user.name)
         p.isSelf -> t("addFriend.self")
         p.isFriend -> t("addFriend.already")
+        p.requestedMe == true -> tf("addFriend.requestedMe", p.user.name)
         else -> t("addFriend.question")
     }
     Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -262,11 +267,22 @@ fun AddFriendSheet(invite: FriendInvite, onDismiss: () -> Unit) {
             else -> CircularProgressIndicator(color = Seeli.Green)
         }
         Text(status, style = ts(13, color = Seeli.Muted), textAlign = TextAlign.Center, modifier = Modifier.padding(top = 20.dp, bottom = 28.dp).padding(horizontal = 30.dp))
-        if (p != null && !p.isSelf && !p.isFriend && added == null) {
+        if (p != null && !p.isSelf && !p.isFriend && added == null && !requested && p.requested != true) {
             PrimaryButton(enabled = !busy, onClick = {
                 busy = true
-                scope.launch { added = AppStore.addFriend(invite); busy = false }
-            }) { if (busy) CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(22.dp)) else Text(t("addFriend.connect")) }
+                scope.launch {
+                    when (val r = AppStore.addFriend(invite)) {
+                        is AppStore.AddResult.Friends -> added = r.friend
+                        AppStore.AddResult.Requested -> requested = true
+                        null -> {}
+                    }
+                    busy = false
+                }
+            }) {
+                if (busy) CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(22.dp))
+                else Text(if (p.requestedMe == true) t("requests.accept") else t("addFriend.request"))
+            }
+            if (!busy) ErrorText(AppStore.lastError, Modifier.padding(top = 8.dp))
             Text(t("common.cancel"), style = ts(13, color = Seeli.Muted), modifier = Modifier.padding(top = 12.dp).tap(onClick = onDismiss))
         } else {
             PrimaryButton(t("common.close"), onClick = {

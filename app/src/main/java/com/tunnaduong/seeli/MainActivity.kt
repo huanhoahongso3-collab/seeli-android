@@ -44,6 +44,7 @@ import com.tunnaduong.seeli.ui.screens.AuthFlow
 import com.tunnaduong.seeli.ui.screens.CameraScreen
 import com.tunnaduong.seeli.ui.screens.ConnectScreen
 import com.tunnaduong.seeli.ui.screens.FriendProfileScreen
+import com.tunnaduong.seeli.ui.screens.FriendRequestsScreen
 import com.tunnaduong.seeli.ui.screens.FriendsScreen
 import com.tunnaduong.seeli.ui.screens.HomeScreen
 import com.tunnaduong.seeli.ui.screens.MemoriesScreen
@@ -160,6 +161,7 @@ private fun MainFlow() {
             Route.Privacy -> PrivacyScreen()
             Route.Settings -> SettingsScreen()
             Route.Verified -> VerifiedScreen()
+            Route.Requests -> FriendRequestsScreen()
             Route.Scan -> QRScanScreen()
             Route.MyQR -> MyQRScreen()
             is Route.Reunion -> ReunionScreen(route.id)

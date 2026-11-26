@@ -28,7 +28,8 @@ class SeeliMessagingService : FirebaseMessagingService() {
         val body = d["body"] ?: return
         val (link, id) = when (d["type"]) {
             "friend_post" -> "seeli://connect" to (d["momentId"] ?: body)
-            "comment_reply" -> "seeli://connect" to "reply" + d["momentId"]
+            "comment_reply" -> "seeli://comments/${d["momentId"]}" to "reply" + d["momentId"]
+            "friend_request" -> "seeli://requests" to "request" + d["friendId"]
             "comment" -> "seeli://comments/${d["momentId"]}" to "comment" + d["momentId"]
             "friend_added" -> "seeli://friend/${d["friendId"]}" to "friend" + d["friendId"]
             else -> "seeli://home" to body

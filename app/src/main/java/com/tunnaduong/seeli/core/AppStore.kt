@@ -44,6 +44,11 @@ object AppStore {
     val onceImages = mutableStateMapOf<String, Bitmap>()
     var blocked by mutableStateOf(listOf<PublicUser>())
     var outbox by mutableStateOf(listOf<PendingUpload>())
+    /** Comments on my photos, answers to my comments, friend requests (last 30 days). */
+    var activity by mutableStateOf(listOf<ActivityItem>())
+    var friendRequests by mutableStateOf(FriendRequests())
+    /** When Let's connect was last opened; newer posts and activity count toward the badge. */
+    var connectSeenAt by mutableStateOf(Instant.EPOCH)
 
     // Preferences
     var defaultAudience by mutableStateOf(Audience.ONLY_ME)
@@ -61,6 +66,8 @@ object AppStore {
     var pendingInvite by mutableStateOf<FriendInvite?>(null)
     /** A moment whose comments should open (tapped a "new perspective" notification). */
     var pendingCommentsMoment by mutableStateOf<String?>(null)
+    /** A friend's post whose comments should open in Let's connect. */
+    var pendingThreadPost by mutableStateOf<String?>(null)
     var isSyncing by mutableStateOf(false)
     /** True right after sign-up, so the "account created" screen shows before entering. */
     var welcomePending by mutableStateOf(false)
@@ -83,6 +90,9 @@ object AppStore {
         val demoMode: Boolean = false,
         val notificationsEnabled: Boolean = true,
         val friendPushEnabled: Boolean? = true,
+        val activity: List<ActivityItem> = emptyList(),
+        val friendRequests: FriendRequests = FriendRequests(),
+        val connectSeenAt: Date? = null,
     )
 
     private val cacheFile get() = File(ctx.filesDir, "seeli-cache.json")
@@ -102,11 +112,12 @@ object AppStore {
         account = s.account; moments = s.moments; friends = s.friends; friendPosts = s.friendPosts
         blocked = s.blocked; outbox = s.outbox; defaultAudience = s.defaultAudience; demoMode = s.demoMode
         notificationsEnabled = s.notificationsEnabled; friendPushEnabled = s.friendPushEnabled ?: true
+        activity = s.activity; friendRequests = s.friendRequests; connectSeenAt = s.connectSeenAt ?: Instant.EPOCH
     }
 
     fun save() {
         val s = Snapshot(account, moments, friends, friendPosts, blocked, outbox, defaultAudience, demoMode,
-            notificationsEnabled, friendPushEnabled)
+            notificationsEnabled, friendPushEnabled, activity, friendRequests, connectSeenAt)
         runCatching {
             val tmp = File(ctx.filesDir, "seeli-cache.json.tmp")
             tmp.writeText(ApiClient.json.encodeToString(Snapshot.serializer(), s))
@@ -174,6 +185,7 @@ object AppStore {
         // A different person on this phone: drop the previous cache.
         if (account?.id != res.user.id) {
             moments = emptyList(); friends = emptyList(); friendPosts = emptyList(); blocked = emptyList(); outbox = emptyList()
+            activity = emptyList(); friendRequests = FriendRequests(); connectSeenAt = Instant.EPOCH
         }
         account = res.user
         path.clear()
@@ -192,6 +204,7 @@ object AppStore {
         NotificationService.stopFriendWatch(ctx)
         account = null
         moments = emptyList(); friends = emptyList(); friendPosts = emptyList(); blocked = emptyList()
+        activity = emptyList(); friendRequests = FriendRequests(); connectSeenAt = Instant.EPOCH
         clearOutbox()
         path.clear()
         authGeneration++
@@ -244,6 +257,9 @@ object AppStore {
             val feedReq = scope.async { runCatching { api.request<List<FriendPost>>("GET", "feed") }.getOrNull() }
             val blocksReq = scope.async { runCatching { api.request<List<PublicUser>>("GET", "blocks") }.getOrNull() }
             val healthReq = scope.async { runCatching { api.request<Health>("GET", "health") }.getOrNull() }
+            val since = Instant.now().minus(30, ChronoUnit.DAYS).toEpochMilli()
+            val activityReq = scope.async { runCatching { api.request<ActivityFeed>("GET", "activity?v=2&since=$since") }.getOrNull() }
+            val requestsReq = scope.async { runCatching { api.request<FriendRequests>("GET", "friend-requests") }.getOrNull() }
             healthReq.await()?.let {
                 serverAllowsDemo = it.allowDemo ?: false
                 if (!serverAllowsDemo) demoMode = false
@@ -260,6 +276,8 @@ object AppStore {
                 markFeedSeen(list)
             }
             bl?.let { blocked = it }
+            activityReq.await()?.let { activity = it.items }
+            requestsReq.await()?.let { friendRequests = it }
             refreshClock()
             save()
             enableFriendPush()
@@ -326,7 +344,8 @@ object AppStore {
         }
 
     fun startDraft(imageData: ByteArray?) {
-        draft = Draft(imageData = imageData, capturedAt = Instant.now(), audience = defaultAudience)
+        val audience = if (defaultAudience == Audience.CLOSE_FRIENDS && friends.none { it.isClose }) Audience.CIRCLE else defaultAudience
+        draft = Draft(imageData = imageData, capturedAt = Instant.now(), audience = audience)
     }
 
     /** Save to the outbox first (so nothing is lost offline), then upload. */
@@ -339,6 +358,7 @@ object AppStore {
             audience = draft.audience,
             createdAt = draft.capturedAt,
             demo = demoMode && serverAllowsDemo,
+            recipients = if (draft.audience == Audience.SELECTED) draft.recipients else null,
         )
         runCatching { File(outboxDir, "${p.id}.jpg").writeBytes(PhotoPrep.jpeg(data)) }
         outbox = outbox + p
@@ -357,7 +377,17 @@ object AppStore {
             for (p in outbox.toList()) {
                 val file = File(outboxDir, "${p.id}.jpg")
                 if (!file.exists()) { outbox = outbox.filterNot { it.id == p.id }; continue }
-                val moment = try { api.uploadMoment(p, file.readBytes()) } catch (_: Exception) { break } // offline: later
+                val moment = try {
+                    api.uploadMoment(p, file.readBytes())
+                } catch (e: ApiError) {
+                    // The chosen people are no longer friends: keep it private instead of retrying forever.
+                    if (e.code == "recipients_required") {
+                        outbox = outbox.map { if (it.id == p.id) it.copy(audience = Audience.ONLY_ME, recipients = null) else it }
+                        save()
+                        continue
+                    }
+                    break
+                } catch (_: Exception) { break } // offline: later
                 file.delete()
                 outbox = outbox.filterNot { it.id == p.id }
                 moments = listOf(moment) + moments
@@ -421,6 +451,71 @@ object AppStore {
 
     suspend fun comments(id: String): List<Comment> = attempt { api.request<List<Comment>>("GET", "moments/$id/comments") } ?: emptyList()
 
+    // ---- Comment threads
+
+    suspend fun thread(momentID: String): CommentThread? = attempt { api.request<CommentThread>("GET", "moments/$momentID/comments?v=2") }
+
+    suspend fun postComment(momentID: String, text: String, parentID: String?, visibility: String): ThreadComment? {
+        val clean = text.trim()
+        if (clean.isEmpty()) return null
+        val body = mutableMapOf<String, Any?>("text" to clean, "visibility" to visibility)
+        if (parentID != null) body["parentId"] = parentID
+        val c = attempt { api.request<ThreadComment>("POST", "moments/$momentID/comments", body) } ?: return null
+        friendPosts = friendPosts.map {
+            if (it.id != momentID) it else it.copy(
+                commentCount = (it.commentCount ?: 0) + 1, myCommentCount = (it.myCommentCount ?: 0) + 1,
+                lastActivityAt = Instant.now(), myComment = if (parentID == null) clean else it.myComment,
+            )
+        }
+        save()
+        return c
+    }
+
+    suspend fun editComment(momentID: String, commentID: String, text: String): ThreadComment? {
+        val clean = text.trim()
+        if (clean.isEmpty()) return null
+        return attempt { api.request<ThreadComment>("PATCH", "moments/$momentID/comments/$commentID", mapOf("text" to clean)) }
+    }
+
+    suspend fun deleteComment(momentID: String, commentID: String): Boolean {
+        val ok = attempt { api.send("DELETE", "moments/$momentID/comments/$commentID") } != null
+        if (ok) scope.launch { refresh() }
+        return ok
+    }
+
+    suspend fun approveComment(momentID: String, commentID: String, approve: Boolean): Boolean {
+        val ok = attempt { api.send("POST", "moments/$momentID/comments/$commentID/approve", mapOf("approve" to approve)) } != null
+        if (ok) {
+            moments = moments.map { if (it.id == momentID && (it.pendingCount ?: 0) > 0) it.copy(pendingCount = it.pendingCount!! - 1) else it }
+            save()
+        }
+        return ok
+    }
+
+    /** Opens a moment's comments: my own photo in Memories, a friend's in Let's connect. */
+    fun openComments(momentID: String?) {
+        if (momentID == null) { setPath(Route.Connect); return }
+        if (moments.any { it.id == momentID }) {
+            pendingCommentsMoment = momentID
+            setPath(Route.Memories)
+        } else {
+            pendingThreadPost = momentID
+            setPath(Route.Connect)
+        }
+    }
+
+    // ---- Let's connect badge
+
+    /** New friend posts and activity since Let's connect was last opened (requests are counted separately). */
+    val connectBadge: Int
+        get() = friendPosts.count { it.createdAt > connectSeenAt && it.viewedAt == null } +
+            activity.count { it.at > connectSeenAt && it.type != "friend_request" }
+
+    fun markConnectSeen() {
+        connectSeenAt = Instant.now()
+        save()
+    }
+
     fun refreshClock() { now = Instant.now() }
 
     /** seeli:// deep links from widgets, notifications and QR codes. */
@@ -440,8 +535,11 @@ object AppStore {
                 }
             }
             "comments" -> {
-                pendingCommentsMoment = uri.lastPathSegment
-                setPath(Route.Memories)
+                openComments(uri.lastPathSegment)
+                scope.launch { refresh() }
+            }
+            "requests" -> {
+                setPath(Route.Connect, Route.Requests)
                 scope.launch { refresh() }
             }
             "reunion" -> {
@@ -460,7 +558,18 @@ object AppStore {
     // ---- Friends
 
     @Serializable
-    data class InvitePreview(val user: PublicUser, val isSelf: Boolean, val isFriend: Boolean)
+    data class InvitePreview(
+        val user: PublicUser, val isSelf: Boolean, val isFriend: Boolean,
+        val requested: Boolean? = null, val requestedMe: Boolean? = null,
+    )
+
+    sealed interface AddResult {
+        data object Requested : AddResult
+        data class Friends(val friend: Friend) : AddResult
+    }
+
+    @Serializable
+    private data class AddResponse(val status: String, val friend: Friend? = null)
 
     fun friend(id: String) = friends.firstOrNull { it.id == id }
 
@@ -468,12 +577,46 @@ object AppStore {
 
     suspend fun preview(invite: FriendInvite): InvitePreview = api.request("GET", "invites/${invite.code}")
 
-    suspend fun addFriend(invite: FriendInvite): Friend? {
-        val f = attempt { api.request<Friend>("POST", "friends", mapOf("code" to invite.code)) } ?: return null
+    /** Sends a friend request (or connects right away if they had already asked). */
+    suspend fun addFriend(invite: FriendInvite): AddResult? {
+        val r = attempt { api.request<AddResponse>("POST", "friends", mapOf("code" to invite.code, "request" to true)) } ?: return null
+        scope.launch { refresh() }
+        val f = r.friend
+        if (r.status == "friends" && f != null) {
+            friends = listOf(f) + friends.filterNot { it.id == f.id }
+            save()
+            return AddResult.Friends(f)
+        }
+        return AddResult.Requested
+    }
+
+    suspend fun acceptRequest(userID: String): Boolean {
+        val f = attempt { api.request<Friend>("POST", "friend-requests/$userID/accept") } ?: return false
+        friendRequests = friendRequests.copy(incoming = friendRequests.incoming.filterNot { it.user.id == userID })
         friends = listOf(f) + friends.filterNot { it.id == f.id }
         save()
         scope.launch { refresh() }
-        return f
+        return true
+    }
+
+    /** Declines an incoming request or cancels one I sent. */
+    suspend fun dropRequest(userID: String) {
+        attempt { api.send("DELETE", "friend-requests/$userID") } ?: return
+        friendRequests = FriendRequests(
+            friendRequests.incoming.filterNot { it.user.id == userID },
+            friendRequests.outgoing.filterNot { it.user.id == userID },
+        )
+        save()
+    }
+
+    suspend fun setClose(id: String, close: Boolean) {
+        if (friends.none { it.id == id }) return
+        friends = friends.map { if (it.id == id) it.copy(close = close) else it }
+        save()
+        attempt { api.request<Friend>("PATCH", "friends/$id", mapOf("close" to close)) }?.let { f ->
+            friends = friends.map { if (it.id == id) f else it }
+            save()
+        }
     }
 
     suspend fun updateMemo(id: String, memo: String) {

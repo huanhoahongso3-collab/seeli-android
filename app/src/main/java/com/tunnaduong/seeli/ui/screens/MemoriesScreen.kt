@@ -1,5 +1,21 @@
 package com.tunnaduong.seeli.ui.screens
 
+import com.tunnaduong.seeli.core.Audience
+
+import androidx.compose.material.icons.outlined.Public
+
+import androidx.compose.material.icons.outlined.People
+
+import androidx.compose.material.icons.outlined.HowToReg
+
+import androidx.compose.material.icons.outlined.StarOutline
+
+import androidx.compose.material.icons.outlined.Lock
+
+import androidx.compose.material3.rememberModalBottomSheetState
+
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+
 import android.graphics.BitmapFactory
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.focus.focusRequester
@@ -112,8 +128,13 @@ fun MemoriesScreen() {
         viewingComments = m
     }
 
+    var refreshing by remember { mutableStateOf(false) }
     SeeliScreen("MY MEMORIES", t("memories.subtitle")) {
-        LazyColumn(Modifier.weight(1f).padding(horizontal = 24.dp)) {
+        PullToRefreshBox(refreshing, onRefresh = {
+            refreshing = true
+            scope.launch { AppStore.pullRefresh(); refreshing = false }
+        }, Modifier.weight(1f)) {
+        LazyColumn(Modifier.fillMaxSize().padding(horizontal = 24.dp)) {
             item {
                 Row(Modifier.padding(bottom = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -142,6 +163,7 @@ fun MemoriesScreen() {
                     modifier = Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 30.dp))
             }
         }
+        }
     }
 
     deleting?.let { d ->
@@ -155,7 +177,10 @@ fun MemoriesScreen() {
         )
     }
     viewingComments?.let { m ->
-        ModalBottomSheet(onDismissRequest = { viewingComments = null }, containerColor = Seeli.BG) { CommentsSheet(m) }
+        ModalBottomSheet(onDismissRequest = { viewingComments = null }, containerColor = Seeli.BG,
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+            CommentThreadSheet(m.id, AppStore.account?.id ?: "", AppStore.account?.name ?: "", m.note)
+        }
     }
 }
 
@@ -201,16 +226,21 @@ private fun MemoryCard(moment: Moment, onOpen: () -> Unit, onComments: () -> Uni
                             Text(" $place", style = ts(11, color = Seeli.Muted))
                         }
                         Spacer(Modifier.weight(1f))
-                        Text(DateText.stamp(moment.createdAt), style = ts(11, color = Seeli.Muted))
+                        Icon(audienceIcon(moment.sharedWith), moment.sharedWith.badge, tint = Seeli.Muted, modifier = Modifier.size(13.dp))
+                        Text(" " + DateText.stamp(moment.createdAt), style = ts(11, color = Seeli.Muted))
                     }
                 }
             }
         }
         HairLine(Modifier.padding(horizontal = 12.dp))
         Row(Modifier.padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Row(Modifier.tap(onClick = onComments), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(Modifier.tap(enabled = moment.isPending != true, onClick = onComments), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Icon(Icons.Outlined.ChatBubbleOutline, null, tint = Seeli.Ink, modifier = Modifier.size(15.dp))
-                Text(tf("memories.comments", moment.commentCount), style = ts(12, color = Seeli.Ink))
+                Text(tf("memories.comments", moment.commentCount), style = ts(12, color = Seeli.Ink), maxLines = 1)
+                val pending = moment.pendingCount ?: 0
+                if (pending > 0) Text(tf("memories.pending", pending), style = ts(10, FontWeight.SemiBold, Color(0xFFA07A2C)),
+                    modifier = Modifier.clip(CircleShape).background(Seeli.Sun.copy(alpha = 0.35f)).padding(horizontal = 8.dp, vertical = 3.dp))
             }
             Spacer(Modifier.weight(1f))
             val (icon, label, color) = when {
@@ -219,90 +249,9 @@ private fun MemoryCard(moment: Moment, onOpen: () -> Unit, onComments: () -> Uni
                 else -> Triple(Icons.Outlined.Bedtime, t("memories.sleeping"), Seeli.Muted)
             }
             Icon(icon, null, tint = color, modifier = Modifier.size(13.dp))
-            Text(" $label", style = ts(11, color = color))
+            Text(" $label", style = ts(11, color = color), maxLines = 1)
             Box(Modifier.size(width = 36.dp, height = 30.dp).tap(onClick = onDelete), contentAlignment = Alignment.Center) {
                 Icon(Icons.Outlined.DeleteOutline, t("common.delete"), tint = Seeli.Muted, modifier = Modifier.size(17.dp))
-            }
-        }
-    }
-}
-
-@Composable
-private fun CommentsSheet(moment: Moment) {
-    val scope = rememberCoroutineScope()
-    var comments by remember { mutableStateOf(listOf<Comment>()) }
-    var loading by remember { mutableStateOf(true) }
-    var replyingTo by remember { mutableStateOf<String?>(null) }
-    var draft by remember { mutableStateOf("") }
-    var sending by remember { mutableStateOf(false) }
-    LaunchedEffect(moment.id) {
-        if (moment.isPending != true) comments = AppStore.comments(moment.id)
-        loading = false
-    }
-    fun send(c: Comment) {
-        sending = true
-        scope.launch {
-            AppStore.replyToComment(moment.id, c.id, draft)?.let { r ->
-                comments = comments.map { if (it.id == c.id) it.copy(reply = r.reply, repliedAt = r.repliedAt) else it }
-                replyingTo = null
-                draft = ""
-            }
-            sending = false
-        }
-    }
-    Column(Modifier.fillMaxWidth().heightIn(min = 300.dp).navigationBarsPadding().imePadding().padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text(t("comments.title"), style = ts(18, FontWeight.SemiBold, Seeli.Ink))
-        Text(t("connect.privacy"), style = ts(11, color = Seeli.Muted))
-        when {
-            loading -> Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Seeli.Green) }
-            comments.isEmpty() -> Text(t("comments.empty"), style = ts(13, color = Seeli.Muted), textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth().padding(vertical = 40.dp))
-            else -> Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                comments.forEach { c ->
-                    Column(Modifier.fillMaxWidth().seeliCard(radius = 14.dp).padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Avatar(c.author.initial, 32.dp)
-                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Text(c.author.name, style = ts(13, FontWeight.SemiBold, Seeli.Ink))
-                                Text(c.text, style = ts(14, color = Seeli.Ink))
-                            }
-                        }
-                        val indent = Modifier.padding(start = 42.dp)
-                        val answer = c.reply
-                        when {
-                            replyingTo == c.id -> {
-                                val focus = remember { FocusRequester() }
-                                LaunchedEffect(Unit) { focus.requestFocus() }
-                                val canSend = !sending && draft.isNotBlank()
-                                Row(indent.fillMaxWidth(), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Box(Modifier.weight(1f).seeliCard(Seeli.Card, 12.dp, false).padding(horizontal = 12.dp, vertical = 10.dp)) {
-                                        SeeliTextField(draft, { draft = it }, t("comments.reply.placeholder"),
-                                            Modifier.fillMaxWidth().focusRequester(focus), singleLine = false, fontSize = 14)
-                                    }
-                                    Box(Modifier.size(38.dp).clip(CircleShape).background(Seeli.Green.copy(alpha = if (canSend) 1f else 0.4f))
-                                        .tap { if (canSend) send(c) }, contentAlignment = Alignment.Center) {
-                                        if (sending) CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
-                                        else Icon(Icons.Outlined.ArrowUpward, t("comments.reply.send"), tint = Color.White, modifier = Modifier.size(18.dp))
-                                    }
-                                }
-                            }
-                            answer != null -> Column(indent.fillMaxWidth().seeliCard(Seeli.Card, 12.dp, false).padding(10.dp),
-                                verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Row(Modifier.fillMaxWidth()) {
-                                    Text(t("comments.reply.yours"), style = ts(11, color = Seeli.Muted), modifier = Modifier.weight(1f))
-                                    Text(t("comments.reply.edit"), style = ts(11, FontWeight.Medium, Seeli.Green),
-                                        modifier = Modifier.tap { draft = answer; replyingTo = c.id })
-                                }
-                                Text(answer, style = ts(14, color = Seeli.Ink))
-                            }
-                            else -> Row(indent.tap { draft = ""; replyingTo = c.id }, verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Icon(Icons.AutoMirrored.Outlined.Reply, null, tint = Seeli.Green, modifier = Modifier.size(16.dp))
-                                Text(t("comments.reply"), style = ts(12, FontWeight.Medium, Seeli.Green))
-                            }
-                        }
-                    }
-                }
             }
         }
     }
@@ -388,4 +337,12 @@ fun ReunionScreen(momentID: String) {
             }
         }
     }
+}
+
+fun audienceIcon(a: Audience) = when (a) {
+    Audience.ONLY_ME -> Icons.Outlined.Lock
+    Audience.CLOSE_FRIENDS -> Icons.Outlined.StarOutline
+    Audience.SELECTED -> Icons.Outlined.HowToReg
+    Audience.CIRCLE -> Icons.Outlined.People
+    Audience.EVERYONE -> Icons.Outlined.Public
 }

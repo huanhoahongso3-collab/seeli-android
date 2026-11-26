@@ -2,7 +2,6 @@ package com.tunnaduong.seeli.core
 
 import android.net.Uri
 import kotlinx.serialization.KSerializer
-import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.descriptors.PrimitiveKind
 import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
@@ -21,26 +20,42 @@ object InstantSerializer : KSerializer<Instant> {
 
 typealias Date = @Serializable(with = InstantSerializer::class) Instant
 
-@Serializable
-enum class Audience {
-    @SerialName("onlyMe") ONLY_ME,
-    @SerialName("circle") CIRCLE,
-    @SerialName("everyone") EVERYONE;
+/** Unknown values (from a newer server) read as circle rather than failing the whole list. */
+object AudienceSerializer : KSerializer<Audience> {
+    override val descriptor = PrimitiveSerialDescriptor("Audience", PrimitiveKind.STRING)
+    override fun serialize(encoder: Encoder, value: Audience) = encoder.encodeString(value.raw)
+    override fun deserialize(decoder: Decoder): Audience =
+        decoder.decodeString().let { raw -> Audience.entries.firstOrNull { it.raw == raw } ?: Audience.CIRCLE }
+}
 
-    val raw: String get() = when (this) { ONLY_ME -> "onlyMe"; CIRCLE -> "circle"; EVERYONE -> "everyone" }
+@Serializable(with = AudienceSerializer::class)
+enum class Audience(val raw: String) {
+    ONLY_ME("onlyMe"),
+    CLOSE_FRIENDS("closeFriends"),
+    SELECTED("selected"),
+    CIRCLE("circle"),
+    EVERYONE("everyone");
 
     val badge: String get() = when (this) {
         ONLY_ME -> "ONLY ME"
+        CLOSE_FRIENDS -> "CLOSE FRIENDS"
+        SELECTED -> "CHOSEN"
         CIRCLE -> "MY CIRCLE"
         EVERYONE -> "PUBLIC"
     }
 
     val descriptionKey: String get() = when (this) {
         ONLY_ME -> "audience.onlyMe.desc"
+        CLOSE_FRIENDS -> "audience.close.desc"
+        SELECTED -> "audience.selected.desc"
         CIRCLE -> "audience.circle.desc"
         EVERYONE -> "audience.public.desc"
     }
 }
+
+/** Who a moment is shared with (newer servers); `audience` alone is only onlyMe / circle. */
+@Serializable
+data class ShareInfo(val audience: Audience, val recipientIds: List<String> = emptyList())
 
 private fun initialOf(name: String) = name.take(1).uppercase()
 
@@ -60,9 +75,46 @@ data class Comment(
     val repliedAt: Date? = null,
 )
 
-/** GET /activity: perspectives on my photos and replies to mine since a time. */
+/** GET /activity?v=2: comments on my photos, answers to mine, friend requests. */
 @Serializable
-data class ActivityItem(val type: String, val momentId: String? = null, val at: Date, val user: PublicUser)
+data class ActivityItem(
+    val type: String,
+    val momentId: String? = null,
+    val at: Date,
+    val user: PublicUser,
+    val commentId: String? = null,
+    val text: String? = null,
+    val pending: Boolean? = null,
+) {
+    val key get() = "$type-${commentId ?: momentId ?: ""}-${user.id}-${at.epochSecond}"
+}
+
+/** One comment in a moment's shared thread (GET comments?v=2). */
+@Serializable
+data class ThreadComment(
+    val id: String,
+    val parentId: String? = null,
+    val text: String,
+    val createdAt: Date,
+    val editedAt: Date? = null,
+    val author: PublicUser,
+    /** "owner" (only the photo's owner) or "circle" (everyone, once approved). */
+    val visibility: String = "owner",
+    /** "pending" | "approved" | "rejected". */
+    val status: String = "approved",
+    val mine: Boolean = false,
+) {
+    val isPending get() = visibility == "circle" && status == "pending"
+}
+
+@Serializable
+data class CommentThread(val isOwner: Boolean, val comments: List<ThreadComment>)
+
+@Serializable
+data class FriendRequest(val user: PublicUser, val createdAt: Date)
+
+@Serializable
+data class FriendRequests(val incoming: List<FriendRequest> = emptyList(), val outgoing: List<FriendRequest> = emptyList())
 
 @Serializable
 data class ActivityFeed(val now: Date, val items: List<ActivityItem>)
@@ -85,8 +137,13 @@ data class Moment(
     val photoUrl: String? = null,
     /** Waiting in the outbox (taken offline / upload failed). */
     val isPending: Boolean? = null,
+    val share: ShareInfo? = null,
+    /** Comments meant for the circle that wait for my approval. */
+    val pendingCount: Int? = null,
+    val lastCommentAt: Date? = null,
 ) {
     val isRevealed get() = reunitedAt != null
+    val sharedWith get() = share?.audience ?: audience
 }
 
 @Serializable
@@ -97,7 +154,9 @@ data class Friend(
     val bio: String = "",
     val memo: String = "",
     val connectedAt: Date,
+    val close: Boolean? = false,
 ) {
+    val isClose get() = close == true
     val initial get() = initialOf(name)
 }
 
@@ -117,7 +176,15 @@ data class FriendPost(
     val scene: Int = 0,
     /** When I opened this photo. A friend's photo can be opened only once. */
     val viewedAt: Date? = null,
-)
+    /** Comments I can see, mine, and answers to mine. */
+    val commentCount: Int? = null,
+    val myCommentCount: Int? = null,
+    val repliesToMe: Int? = null,
+    /** Last time something concerning me happened here. */
+    val lastActivityAt: Date? = null,
+) {
+    val hasMyActivity get() = (myCommentCount ?: 0) > 0 || (repliesToMe ?: 0) > 0 || myComment != null
+}
 
 @Serializable
 data class UserAccount(
@@ -141,6 +208,7 @@ data class Draft(
     var recordPlace: Boolean = true,
     var placeName: String? = null,
     var audience: Audience = Audience.ONLY_ME,
+    var recipients: List<String> = emptyList(),
 )
 
 /** A photo waiting to be uploaded (kept on disk until the server has it). */
@@ -152,6 +220,7 @@ data class PendingUpload(
     val audience: Audience,
     val createdAt: Date,
     val demo: Boolean,
+    val recipients: List<String>? = null,
 )
 
 sealed interface Route {
@@ -167,6 +236,7 @@ sealed interface Route {
     data object Privacy : Route
     data object Settings : Route
     data object Verified : Route
+    data object Requests : Route
     data object Scan : Route
     data object MyQR : Route
     data class Reunion(val id: String) : Route

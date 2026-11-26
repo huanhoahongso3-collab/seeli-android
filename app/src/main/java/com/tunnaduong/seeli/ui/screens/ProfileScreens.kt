@@ -1,5 +1,17 @@
 package com.tunnaduong.seeli.ui.screens
 
+import com.tunnaduong.seeli.core.DateText
+
+import androidx.compose.material3.CircularProgressIndicator
+
+import androidx.compose.material.icons.outlined.Close
+
+import androidx.compose.material.icons.outlined.PersonAddAlt
+
+import androidx.compose.material.icons.outlined.StarOutline
+
+import androidx.compose.material.icons.filled.Star
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -163,10 +175,24 @@ private fun EditProfileSheet(onDone: () -> Unit) {
 
 @Composable
 fun FriendsScreen() {
+    val scope = rememberCoroutineScope()
     SeeliScreen("MY CIRCLE", t("friends.subtitle"), Leading.BACK) {
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 30.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             MenuRow(Icons.Outlined.QrCodeScanner, t("connect.qr.title"), t("connect.qr.body")) { AppStore.push(Route.Scan) }
+            val reqs = AppStore.friendRequests
+            if (reqs.incoming.isNotEmpty() || reqs.outgoing.isNotEmpty()) {
+                Box {
+                    MenuRow(Icons.Outlined.PersonAddAlt, t("requests.title"),
+                        if (reqs.incoming.isEmpty()) tf("requests.sent.count", reqs.outgoing.size) else tf("requests.incoming.count", reqs.incoming.size)) {
+                        AppStore.push(Route.Requests)
+                    }
+                    CountBadge(reqs.incoming.size, Modifier.align(Alignment.TopEnd).padding(8.dp))
+                }
+            }
+            if (AppStore.friends.isNotEmpty()) {
+                Text(t("friends.close.hint"), style = ts(11, color = Seeli.Muted), modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
+            }
             if (AppStore.friends.isEmpty()) {
                 Text(t("connect.empty"), style = ts(13, color = Seeli.Muted), textAlign = TextAlign.Center, modifier = Modifier.padding(top = 40.dp))
             }
@@ -177,6 +203,11 @@ fun FriendsScreen() {
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                         Text(f.name, style = ts(15, FontWeight.Medium, Seeli.Ink))
                         Text("@${f.handle}", style = ts(12, color = Seeli.Muted))
+                    }
+                    Box(Modifier.size(40.dp).tap { scope.launch { AppStore.setClose(f.id, !f.isClose) } }, contentAlignment = Alignment.Center) {
+                        Icon(if (f.isClose) Icons.Filled.Star else Icons.Outlined.StarOutline,
+                            if (f.isClose) t("close.remove") else t("close.add"),
+                            tint = if (f.isClose) Color(0xFFD9A93E) else Seeli.Muted, modifier = Modifier.size(20.dp))
                     }
                     Icon(Icons.Outlined.ChevronRight, null, tint = Seeli.Muted)
                 }
@@ -213,9 +244,13 @@ fun FriendProfileScreen(friendID: String) {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(friend.name, style = ts(22, FontWeight.SemiBold, Seeli.Ink))
                     Text("@${friend.handle}", style = ts(13, color = Seeli.Muted))
-                    Chip("MY CIRCLE")
+                    Chip(if (friend.isClose) "CLOSE FRIEND" else "MY CIRCLE")
                 }
             }
+            ToggleRow(t("close.toggle"), friend.isClose, Modifier.fillMaxWidth().seeliCard().padding(horizontal = 18.dp, vertical = 12.dp)) { on ->
+                scope.launch { AppStore.setClose(friendID, on) }
+            }
+            Text(t("close.toggle.hint"), style = ts(11, color = Seeli.Muted), modifier = Modifier.padding(start = 4.dp))
             Column(Modifier.fillMaxWidth().heightIn(min = 110.dp).seeliCard().padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(t("friend.bio"), style = ts(14, FontWeight.SemiBold, Seeli.Ink))
                 Text(friend.bio.ifEmpty { t("friend.bio.empty") }, style = ts(14, color = if (friend.bio.isEmpty()) Seeli.Muted else Seeli.Ink))
@@ -277,7 +312,7 @@ fun PrivacyScreen() {
             Text(t("privacy.default"), style = ts(15, FontWeight.SemiBold, Seeli.Ink))
             // Segmented control, like the iOS picker.
             Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Seeli.Card).padding(2.dp)) {
-                listOf(Audience.ONLY_ME to "ONLY ME", Audience.CIRCLE to "MY CIRCLE").forEach { (a, label) ->
+                listOf(Audience.ONLY_ME to "ONLY ME", Audience.CLOSE_FRIENDS to "CLOSE", Audience.CIRCLE to "MY CIRCLE").forEach { (a, label) ->
                     val on = AppStore.defaultAudience == a
                     Box(Modifier.weight(1f).clip(RoundedCornerShape(8.dp)).background(if (on) Color.White else Color.Transparent)
                         .tap { AppStore.defaultAudience = a; AppStore.save() }.padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
@@ -409,6 +444,60 @@ fun VerifiedScreen() {
             Text(t("verified.title"), style = ts(20, FontWeight.SemiBold, Seeli.Ink))
             Text(t("verified.body"), style = ts(14, color = Seeli.Muted).copy(lineHeight = 20.sp), textAlign = TextAlign.Center)
             Spacer(Modifier.weight(2f))
+        }
+    }
+}
+
+/** Friend requests: people who scanned my code (accept or decline) and ones I sent. */
+@Composable
+fun FriendRequestsScreen() {
+    val scope = rememberCoroutineScope()
+    var busy by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) { AppStore.refresh() }
+    SeeliScreen("REQUESTS", t("requests.subtitle"), Leading.BACK) {
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 30.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(t("requests.incoming"), style = ts(15, FontWeight.SemiBold, Seeli.Ink))
+            val reqs = AppStore.friendRequests
+            if (reqs.incoming.isEmpty()) Text(t("requests.incoming.empty"), style = ts(13, color = Seeli.Muted))
+            reqs.incoming.forEach { r ->
+                Row(Modifier.fillMaxWidth().seeliCard().padding(14.dp), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Avatar(r.user.initial, 44.dp)
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text(r.user.name, style = ts(15, FontWeight.Medium, Seeli.Ink))
+                        Text("@${r.user.handle} · ${DateText.stamp(r.createdAt)}", style = ts(11, color = Seeli.Muted))
+                    }
+                    if (busy == r.user.id) CircularProgressIndicator(color = Seeli.Green, strokeWidth = 2.dp, modifier = Modifier.size(22.dp))
+                    else {
+                        Text(t("requests.accept"), style = ts(13, FontWeight.SemiBold, Color.White),
+                            modifier = Modifier.clip(CircleShape).background(Seeli.Green).tap {
+                                busy = r.user.id
+                                scope.launch { AppStore.acceptRequest(r.user.id); busy = null }
+                            }.padding(horizontal = 14.dp, vertical = 8.dp))
+                        Box(Modifier.size(34.dp).clip(CircleShape).background(Seeli.Card).tap {
+                            busy = r.user.id
+                            scope.launch { AppStore.dropRequest(r.user.id); busy = null }
+                        }, contentAlignment = Alignment.Center) {
+                            Icon(Icons.Outlined.Close, t("requests.decline"), tint = Seeli.Ink, modifier = Modifier.size(16.dp))
+                        }
+                    }
+                }
+            }
+            if (reqs.outgoing.isNotEmpty()) {
+                Text(t("requests.sent"), style = ts(15, FontWeight.SemiBold, Seeli.Ink), modifier = Modifier.padding(top = 16.dp))
+                reqs.outgoing.forEach { r ->
+                    Row(Modifier.fillMaxWidth().seeliCard().padding(12.dp), verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Avatar(r.user.initial, 36.dp)
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Text(r.user.name, style = ts(14, FontWeight.Medium, Seeli.Ink))
+                            Text(t("requests.waiting"), style = ts(11, color = Seeli.Muted))
+                        }
+                        Text(t("requests.cancel"), style = ts(12, color = Seeli.Muted), modifier = Modifier.tap { scope.launch { AppStore.dropRequest(r.user.id) } })
+                    }
+                }
+            }
         }
     }
 }

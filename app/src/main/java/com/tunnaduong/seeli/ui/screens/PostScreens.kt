@@ -1,5 +1,25 @@
 package com.tunnaduong.seeli.ui.screens
 
+import com.tunnaduong.seeli.ui.Avatar
+
+import com.tunnaduong.seeli.core.tf
+
+import androidx.compose.foundation.layout.height
+
+import androidx.compose.material3.ExperimentalMaterial3Api
+
+import androidx.compose.material3.ModalBottomSheet
+
+import androidx.compose.material.icons.outlined.RadioButtonUnchecked
+
+import androidx.compose.material.icons.filled.CheckCircle
+
+import androidx.compose.material.icons.outlined.Search
+
+import androidx.compose.material.icons.outlined.StarOutline
+
+import androidx.compose.material.icons.filled.Star
+
 import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -155,14 +175,40 @@ fun PostScreen() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AudienceScreen() {
     var audience by remember { mutableStateOf(AppStore.draft.audience) }
+    var recipients by remember { mutableStateOf(AppStore.draft.recipients.toSet()) }
+    var managingClose by remember { mutableStateOf(false) }
+    val closeCount = AppStore.friends.count { it.isClose }
+    val canSubmit = when (audience) {
+        Audience.SELECTED -> recipients.isNotEmpty()
+        Audience.CLOSE_FRIENDS -> closeCount > 0
+        else -> true
+    }
     SeeliScreen("AUDIENCE", t("audience.subtitle"), Leading.BACK) {
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             SectionTitle(t("audience.title"), t("audience.hint"), Modifier.padding(bottom = 10.dp))
-            Audience.entries.forEach { option -> AudienceOption(option, audience == option) { audience = option } }
-            Row(Modifier.padding(top = 10.dp).fillMaxWidth().seeliCard(Seeli.Card, border = false).padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Audience.entries.forEach { option ->
+                val detail = when (option) {
+                    Audience.CLOSE_FRIENDS -> if (closeCount == 0) t("audience.close.none") else tf("audience.close.count", closeCount)
+                    Audience.SELECTED -> if (recipients.isEmpty()) null else tf("audience.selected.count", recipients.size)
+                    else -> null
+                }
+                AudienceOption(option, audience == option, detail) { audience = option }
+                if (option == Audience.CLOSE_FRIENDS && audience == Audience.CLOSE_FRIENDS) {
+                    Row(Modifier.padding(start = 18.dp).tap { managingClose = true }, verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Icon(Icons.Outlined.StarOutline, null, tint = Seeli.Green, modifier = Modifier.size(16.dp))
+                        Text(if (closeCount == 0) t("audience.close.pick") else t("audience.close.manage"), style = ts(13, FontWeight.Medium, Seeli.Green))
+                    }
+                }
+                if (option == Audience.SELECTED && audience == Audience.SELECTED) {
+                    FriendPicker(recipients) { recipients = it }
+                }
+            }
+            Row(Modifier.padding(top = 10.dp, bottom = 16.dp).fillMaxWidth().seeliCard(Seeli.Card, border = false).padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Icon(Icons.Outlined.Lock, null, tint = Seeli.Muted, modifier = Modifier.size(20.dp))
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(t("audience.lock.title"), style = ts(13, FontWeight.SemiBold, Seeli.Ink))
@@ -172,8 +218,9 @@ fun AudienceScreen() {
         }
         Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 12.dp), horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            PrimaryButton(t("audience.submit"), onClick = {
+            PrimaryButton(t("audience.submit"), enabled = canSubmit, onClick = {
                 AppStore.draft.audience = audience
+                AppStore.draft.recipients = if (audience == Audience.SELECTED) recipients.toList() else emptyList()
                 AppStore.commitDraft()
                 AppStore.setPath(Route.Posted)
             })
@@ -183,10 +230,13 @@ fun AudienceScreen() {
             })
         }
     }
+    if (managingClose) {
+        ModalBottomSheet({ managingClose = false }, containerColor = Seeli.BG) { CloseFriendsSheet { managingClose = false } }
+    }
 }
 
 @Composable
-private fun AudienceOption(option: Audience, selected: Boolean, onClick: () -> Unit) {
+private fun AudienceOption(option: Audience, selected: Boolean, detail: String?, onClick: () -> Unit) {
     val disabled = option == Audience.EVERYONE
     val shape = RoundedCornerShape(20.dp)
     Row(
@@ -207,9 +257,73 @@ private fun AudienceOption(option: Audience, selected: Boolean, onClick: () -> U
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(option.badge, style = ts(11, FontWeight.SemiBold, if (disabled) Seeli.Muted else Seeli.Ink.copy(alpha = 0.8f), 1.2.sp))
             Text(t(option.descriptionKey), style = ts(15, color = if (disabled) Seeli.Muted else Seeli.Ink))
+            if (detail != null) Text(detail, style = ts(12, color = Seeli.Green))
         }
         if (disabled) Text(t("audience.soon"), style = ts(11, color = Seeli.Muted),
             modifier = Modifier.clip(CircleShape).background(Color.White).padding(horizontal = 12.dp, vertical = 6.dp))
+    }
+}
+
+/** Tick the friends who should receive this moment. */
+@Composable
+fun FriendPicker(selection: Set<String>, onChange: (Set<String>) -> Unit) {
+    var query by remember { mutableStateOf("") }
+    val q = query.trim().lowercase()
+    val shown = AppStore.friends.sortedWith(compareBy({ !it.isClose }, { it.name }))
+        .filter { q.isEmpty() || it.name.lowercase().contains(q) || it.handle.lowercase().contains(q) }
+    Column(Modifier.padding(start = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (AppStore.friends.isEmpty()) {
+            Text(t("connect.empty"), style = ts(13, color = Seeli.Muted), modifier = Modifier.padding(14.dp))
+            return@Column
+        }
+        Row(Modifier.fillMaxWidth().height(42.dp).seeliCard(Seeli.Card, 12.dp, false).padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Icon(Icons.Outlined.Search, null, tint = Seeli.Muted, modifier = Modifier.size(18.dp))
+            SeeliTextField(query, { query = it }, t("picker.search"), Modifier.weight(1f), fontSize = 14)
+            if (selection.isNotEmpty()) Text(t("picker.clear"), style = ts(12, color = Seeli.Green), modifier = Modifier.tap { onChange(emptySet()) })
+        }
+        Column(Modifier.fillMaxWidth().seeliCard(radius = 16.dp)) {
+            shown.forEach { f ->
+                val on = f.id in selection
+                Row(Modifier.fillMaxWidth().tap { onChange(if (on) selection - f.id else selection + f.id) }.padding(horizontal = 12.dp, vertical = 9.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Avatar(f.initial, 34.dp)
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(f.name, style = ts(14, FontWeight.Medium, Seeli.Ink))
+                            if (f.isClose) Icon(Icons.Filled.Star, null, tint = Seeli.Sun, modifier = Modifier.size(12.dp))
+                        }
+                        Text("@${f.handle}", style = ts(11, color = Seeli.Muted))
+                    }
+                    Icon(if (on) Icons.Filled.CheckCircle else Icons.Outlined.RadioButtonUnchecked, null,
+                        tint = if (on) Seeli.Green else Seeli.Muted.copy(alpha = 0.6f), modifier = Modifier.size(22.dp))
+                }
+            }
+        }
+    }
+}
+
+/** Mark which friends are close friends (used by the "Close friends" audience). */
+@Composable
+fun CloseFriendsSheet(onDone: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(t("close.title"), style = ts(18, FontWeight.SemiBold, Seeli.Ink), modifier = Modifier.weight(1f))
+            Text(t("common.done"), style = ts(14, FontWeight.SemiBold, Seeli.Green), modifier = Modifier.tap(onClick = onDone))
+        }
+        Text(t("close.hint"), style = ts(12, color = Seeli.Muted))
+        Column(Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState()).seeliCard(radius = 16.dp)) {
+            AppStore.friends.forEach { f ->
+                Row(Modifier.fillMaxWidth().tap { scope.launch { AppStore.setClose(f.id, !f.isClose) } }.padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Avatar(f.initial, 34.dp)
+                    Text(f.name, style = ts(14, FontWeight.Medium, Seeli.Ink), modifier = Modifier.weight(1f))
+                    Icon(if (f.isClose) Icons.Filled.Star else Icons.Outlined.StarOutline, null,
+                        tint = if (f.isClose) Color(0xFFD9A93E) else Seeli.Muted, modifier = Modifier.size(20.dp))
+                }
+            }
+        }
     }
 }
 
