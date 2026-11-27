@@ -422,9 +422,11 @@ fun SettingsScreen() {
                     }
                 }
                 Text(t("settings.logout"), style = ts(15, color = Seeli.Ink), modifier = Modifier.fillMaxWidth().tap { confirmLogout = true }.padding(vertical = 6.dp))
-                Text(t("settings.delete"), style = ts(15, color = Seeli.Error), modifier = Modifier.fillMaxWidth().tap { confirmDelete = true }.padding(vertical = 6.dp))
                 ErrorText(AppStore.lastError)
             }
+            // Destructive action kept apart from logout, at the very bottom of Settings.
+            Text(t("settings.delete"), style = ts(13, color = Seeli.Error), textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().padding(top = 36.dp).tap { confirmDelete = true }.padding(vertical = 6.dp))
             Text("SEELI ${BuildConfig.VERSION_NAME}", style = ts(11, color = Seeli.Muted), textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth().padding(top = 10.dp))
         }
